@@ -9,15 +9,51 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// ── Binance API用のaxiosインスタンス（WAF対策） ──
+const binanceApi = axios.create({
+  baseURL: 'https://fapi.binance.com',
+  timeout: 15000,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+  },
+});
+
+// ── リトライ付きfetch関数 ──
+async function fetchWithRetry(url, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // 指数バックオフ: 1秒, 2秒, 4秒...
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`⏳ リトライ ${attempt}/${maxRetries} - ${delay}ms待機...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      const response = await binanceApi.get(url);
+      return response;
+    } catch (error) {
+      const status = error.response?.status;
+      console.error(`❌ API呼出失敗 (試行${attempt + 1}/${maxRetries}): ${url} - Status: ${status || 'N/A'} - ${error.message}`);
+      // 418, 429はリトライ可能、それ以外の4xxはリトライ不要
+      if (status && status >= 400 && status < 500 && status !== 418 && status !== 429) {
+        throw error;
+      }
+      if (attempt === maxRetries - 1) throw error;
+    }
+  }
+}
+
 // ── キャッシュ ──
 let cachedData = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 30 * 1000; // 30秒
+const CACHE_DURATION = 60 * 1000; // 60秒（レート制限対策で延長）
 
 // exchangeInfoキャッシュ（アクティブ銘柄リスト）
 let activeSymbols = null;
 let activeSymbolsFetchTime = 0;
-const EXCHANGE_INFO_CACHE_DURATION = 10 * 60 * 1000; // 10分
+const EXCHANGE_INFO_CACHE_DURATION = 30 * 60 * 1000; // 30分（延長）
 
 /**
  * Binance exchangeInfo からステータスが TRADING のUSDT先物シンボルを取得
@@ -31,7 +67,7 @@ async function fetchActiveSymbols() {
   }
 
   try {
-    const response = await axios.get('https://fapi.binance.com/fapi/v1/exchangeInfo');
+    const response = await fetchWithRetry('/fapi/v1/exchangeInfo');
     const symbols = response.data.symbols;
 
     activeSymbols = new Set(
@@ -64,12 +100,14 @@ async function fetchTop100Volume() {
   }
 
   try {
-    // アクティブ銘柄リストとティッカーデータを並行取得
-    const [tradingSymbols, tickerResponse] = await Promise.all([
-      fetchActiveSymbols(),
-      axios.get('https://fapi.binance.com/fapi/v1/ticker/24hr'),
-    ]);
+    // アクティブ銘柄リストを先に取得
+    const tradingSymbols = await fetchActiveSymbols();
 
+    // リクエスト間に少し待機（WAF対策）
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // ティッカーデータ取得
+    const tickerResponse = await fetchWithRetry('/fapi/v1/ticker/24hr');
     const tickers = tickerResponse.data;
 
     // USDTペア & TRADING状態のみフィルタ → quoteVolumeで降順ソート → 上位100
@@ -107,6 +145,7 @@ async function fetchTop100Volume() {
     };
     lastFetchTime = now;
 
+    console.log(`✅ データ更新完了: ${sorted.length}銘柄 / 合計${totalActive}銘柄`);
     return cachedData;
   } catch (error) {
     console.error('Binance API取得エラー:', error.message);
@@ -123,7 +162,7 @@ app.get('/api/volume/top100', async (req, res) => {
     const result = await fetchTop100Volume();
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'データ取得に失敗しました' });
+    res.status(500).json({ error: 'データ取得に失敗しました', details: error.message });
   }
 });
 
