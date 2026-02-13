@@ -43,8 +43,6 @@ function VolumeTable({ data, snapshots = [] }) {
     const fixedColumns = [
         { key: 'rank', label: '#', sortable: false },
         { key: 'symbol', label: '銘柄' },
-        { key: 'lastPrice', label: '価格' },
-        { key: 'priceChangePercent', label: '24h変動率' },
         { key: 'quoteVolume', label: '24h出来高' },
     ];
 
@@ -104,8 +102,6 @@ function VolumeTable({ data, snapshots = [] }) {
                                         <span className="symbol-quote">/ {quote || 'USDT'}</span>
                                     </div>
                                 </td>
-                                <td className="price-cell">{formatPrice(item.lastPrice)}</td>
-                                <td className={changeClass}>{formatPercent(changePercent)}</td>
                                 <td className="volume-cell">{formatVolume(item.quoteVolume)}</td>
 
                                 {/* スナップショット列 */}

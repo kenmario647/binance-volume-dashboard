@@ -358,8 +358,8 @@ body {
 }
 
 .volume-table tbody td {
-  padding: 10px 16px;
-  font-size: 0.85rem;
+  padding: 5px 8px;
+  font-size: 0.8rem;
   text-align: right;
   font-family: 'JetBrains Mono', monospace;
   font-weight: 400;
@@ -387,10 +387,10 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  font-size: 0.7rem;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 0.6rem;
   font-weight: 700;
   background: var(--bg-primary);
   color: var(--text-muted);
@@ -420,7 +420,7 @@ body {
 
 .symbol-base {
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
 }
@@ -454,11 +454,11 @@ body {
   background: rgba(59, 130, 246, 0.08) !important;
   font-size: 0.65rem !important;
   color: var(--accent-cyan) !important;
-  min-width: 110px;
+  min-width: 90px;
 }
 
 .snapshot-td {
-  padding: 6px 12px !important;
+  padding: 4px 8px !important;
   text-align: right;
 }
 
@@ -476,13 +476,13 @@ body {
 .snap-rank {
   font-weight: 700;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .snap-volume {
   color: var(--text-muted);
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-family: 'JetBrains Mono', monospace;
 }
 
