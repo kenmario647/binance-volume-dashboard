@@ -27,8 +27,7 @@ async function fetchWithRetry(axiosInstance, url, maxRetries = 3) {
         const delay = Math.pow(2, attempt) * 1000;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
-      const response = await axiosInstance.get(url);
-      return response;
+      return await axiosInstance.get(url);
     } catch (error) {
       const status = error.response?.status;
       console.error(`❌ API失敗 (${attempt + 1}/${maxRetries}): ${url} - ${status || 'N/A'}`);
@@ -38,62 +37,54 @@ async function fetchWithRetry(axiosInstance, url, maxRetries = 3) {
   }
 }
 
-class DataCache {
-  constructor(duration = 60000) {
-    this.data = null;
-    this.lastFetchTime = 0;
-    this.duration = duration;
-  }
-  isValid() { return this.data && Date.now() - this.lastFetchTime < this.duration; }
-  set(data) { this.data = data; this.lastFetchTime = Date.now(); }
-  get() { return this.data; }
-}
-
-// ════════════════════════════════════════════════════
-// スナップショットストア（正時の出来高順位を記録）
-// ════════════════════════════════════════════════════
-
-const MAX_SNAPSHOTS = 6;
-
-// 各取引所のスナップショット格納
-// { 'binance-futures': [ { time: '19:00', timestamp: ..., rankings: { 'BTCUSDT': { rank: 1, volume: 123 }, ... } }, ... ] }
-const snapshotStore = {};
-
-function getJSTHour() {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return jst.getUTCHours();
-}
-
 function getJSTTimeLabel() {
   const now = new Date();
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   return `${String(jst.getUTCHours()).padStart(2, '0')}:${String(jst.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-function takeSnapshot(exchangeId, data) {
-  if (!data?.data?.length) return;
+// ════════════════════════════════════════════════════
+// データストア
+// 各取引所の「最新データ」+「スナップショット履歴」を保持
+// 取引所APIは起動時と正時のみ叩く。それ以外はメモリのデータを返す
+// ════════════════════════════════════════════════════
+
+const MAX_SNAPSHOTS = 6;
+
+// { 'binance-futures': { current: { data: [...], timestamp }, snapshots: [ { time, rankings } ] } }
+const store = {};
+
+function saveExchangeData(exchangeId, data) {
+  if (!data?.length) return;
 
   const timeLabel = getJSTTimeLabel();
   const rankings = {};
-  data.data.forEach((item, index) => {
+  data.forEach((item, index) => {
     rankings[item.symbol] = { rank: index + 1, volume: item.quoteVolume };
   });
 
-  if (!snapshotStore[exchangeId]) snapshotStore[exchangeId] = [];
-  const store = snapshotStore[exchangeId];
+  if (!store[exchangeId]) store[exchangeId] = { current: null, snapshots: [] };
 
-  // 初回 or 正時: スナップショットを追加
-  store.push({ time: timeLabel, timestamp: Date.now(), rankings });
+  // 最新データを保存
+  store[exchangeId].current = { data, timestamp: Date.now() };
 
-  // 最大件数を超えたら古いものを削除
-  while (store.length > MAX_SNAPSHOTS) store.shift();
+  // スナップショットを追加
+  store[exchangeId].snapshots.push({ time: timeLabel, timestamp: Date.now(), rankings });
+  while (store[exchangeId].snapshots.length > MAX_SNAPSHOTS) {
+    store[exchangeId].snapshots.shift();
+  }
 
-  console.log(`📸 [${exchangeId}] スナップショット保存: ${timeLabel} (計${store.length}件)`);
+  console.log(`📸 [${exchangeId}] データ保存: ${timeLabel} (スナップショット ${store[exchangeId].snapshots.length}件)`);
 }
 
-function getSnapshots(exchangeId) {
-  return snapshotStore[exchangeId] || [];
+function getExchangeData(exchangeId) {
+  const s = store[exchangeId];
+  if (!s || !s.current) return null;
+  return {
+    data: s.current.data,
+    timestamp: s.current.timestamp,
+    snapshots: s.snapshots,
+  };
 }
 
 // ════════════════════════════════════════════════════
@@ -106,12 +97,9 @@ const binanceApi = axios.create({
   headers: DEFAULT_HEADERS,
 });
 
-const binanceFuturesCache = new DataCache(60000);
-const binanceExchangeInfoCache = new DataCache(30 * 60 * 1000);
 let activeSymbolsSet = null;
 
 async function fetchBinanceActiveSymbols() {
-  if (binanceExchangeInfoCache.isValid()) return activeSymbolsSet;
   try {
     const response = await fetchWithRetry(binanceApi, '/fapi/v1/exchangeInfo');
     activeSymbolsSet = new Set(
@@ -119,25 +107,21 @@ async function fetchBinanceActiveSymbols() {
         .filter(s => s.status === 'TRADING' && s.symbol.endsWith('USDT'))
         .map(s => s.symbol)
     );
-    binanceExchangeInfoCache.set(true);
     return activeSymbolsSet;
   } catch (error) {
     return activeSymbolsSet;
   }
 }
 
-async function fetchBinanceFuturesTop100() {
-  if (binanceFuturesCache.isValid()) return binanceFuturesCache.get();
+async function fetchBinanceFutures() {
   try {
     const tradingSymbols = await fetchBinanceActiveSymbols();
     await new Promise(resolve => setTimeout(resolve, 500));
     const tickerResponse = await fetchWithRetry(binanceApi, '/fapi/v1/ticker/24hr');
-    const tickers = tickerResponse.data;
-    const sorted = tickers
+    const sorted = tickerResponse.data
       .filter(t => {
         if (!t.symbol.endsWith('USDT')) return false;
-        if (tradingSymbols) return tradingSymbols.has(t.symbol);
-        return true;
+        return tradingSymbols ? tradingSymbols.has(t.symbol) : true;
       })
       .map(t => ({
         symbol: t.symbol,
@@ -147,12 +131,11 @@ async function fetchBinanceFuturesTop100() {
       }))
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, 100);
-    const result = { data: sorted, timestamp: Date.now() };
-    binanceFuturesCache.set(result);
-    return result;
+
+    saveExchangeData('binance-futures', sorted);
+    console.log(`✅ [Binance先物] ${sorted.length}銘柄取得`);
   } catch (error) {
-    if (binanceFuturesCache.get()) return binanceFuturesCache.get();
-    throw error;
+    console.error('[Binance先物] エラー:', error.message);
   }
 }
 
@@ -166,14 +149,10 @@ const bitgetApi = axios.create({
   headers: DEFAULT_HEADERS,
 });
 
-const bitgetCache = new DataCache(60000);
-
-async function fetchBitgetSpotTop100() {
-  if (bitgetCache.isValid()) return bitgetCache.get();
+async function fetchBitgetSpot() {
   try {
     const response = await fetchWithRetry(bitgetApi, '/api/v2/spot/market/tickers');
-    const tickers = response.data.data;
-    const sorted = tickers
+    const sorted = response.data.data
       .filter(t => t.symbol.endsWith('USDT'))
       .map(t => ({
         symbol: t.symbol,
@@ -183,17 +162,16 @@ async function fetchBitgetSpotTop100() {
       }))
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, 100);
-    const result = { data: sorted, timestamp: Date.now() };
-    bitgetCache.set(result);
-    return result;
+
+    saveExchangeData('bitget-spot', sorted);
+    console.log(`✅ [Bitget現物] ${sorted.length}銘柄取得`);
   } catch (error) {
-    if (bitgetCache.get()) return bitgetCache.get();
-    throw error;
+    console.error('[Bitget現物] エラー:', error.message);
   }
 }
 
 // ════════════════════════════════════════════════════
-// 3. Upbit 現物
+// 3. Upbit 現物 (USD換算)
 // ════════════════════════════════════════════════════
 
 const upbitApi = axios.create({
@@ -202,26 +180,21 @@ const upbitApi = axios.create({
   headers: DEFAULT_HEADERS,
 });
 
-const upbitCache = new DataCache(60000);
-const upbitMarketsCache = new DataCache(30 * 60 * 1000);
 let upbitMarketsList = null;
 
 async function fetchUpbitMarkets() {
-  if (upbitMarketsCache.isValid() && upbitMarketsList) return upbitMarketsList;
   try {
     const response = await fetchWithRetry(upbitApi, '/v1/market/all?is_details=false');
     upbitMarketsList = response.data
       .filter(m => m.market.startsWith('KRW-'))
       .map(m => ({ market: m.market }));
-    upbitMarketsCache.set(true);
     return upbitMarketsList;
   } catch (error) {
     return upbitMarketsList || [];
   }
 }
 
-async function fetchUpbitSpotTop100() {
-  if (upbitCache.isValid()) return upbitCache.get();
+async function fetchUpbitSpot() {
   try {
     const markets = await fetchUpbitMarkets();
     if (!markets.length) throw new Error('マーケット一覧が取得できません');
@@ -252,12 +225,10 @@ async function fetchUpbitSpotTop100() {
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, 100);
 
-    const result = { data: sorted, timestamp: Date.now() };
-    upbitCache.set(result);
-    return result;
+    saveExchangeData('upbit-spot', sorted);
+    console.log(`✅ [Upbit現物] ${sorted.length}銘柄取得 (USD換算)`);
   } catch (error) {
-    if (upbitCache.get()) return upbitCache.get();
-    throw error;
+    console.error('[Upbit現物] エラー:', error.message);
   }
 }
 
@@ -271,27 +242,22 @@ const binanceAlphaApiBase = axios.create({
   headers: DEFAULT_HEADERS,
 });
 
-const alphaCache = new DataCache(60000);
-const alphaListCache = new DataCache(30 * 60 * 1000);
 let alphaTokenList = null;
 
 async function fetchAlphaTokenList() {
-  if (alphaListCache.isValid() && alphaTokenList) return alphaTokenList;
   try {
     const response = await fetchWithRetry(
       binanceAlphaApiBase,
       '/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list'
     );
     alphaTokenList = response.data.data || [];
-    alphaListCache.set(true);
     return alphaTokenList;
   } catch (error) {
     return alphaTokenList || [];
   }
 }
 
-async function fetchBinanceAlphaTop100() {
-  if (alphaCache.isValid()) return alphaCache.get();
+async function fetchBinanceAlpha() {
   try {
     const alphaTokens = await fetchAlphaTokenList();
     if (!alphaTokens.length) throw new Error('Alphaトークンリストが取得できません');
@@ -300,8 +266,7 @@ async function fetchBinanceAlphaTop100() {
     );
     await new Promise(resolve => setTimeout(resolve, 500));
     const tickerResponse = await fetchWithRetry(binanceApi, '/fapi/v1/ticker/24hr');
-    const tickers = tickerResponse.data;
-    const alphaTickers = tickers
+    const sorted = tickerResponse.data
       .filter(t => alphaSymbolSet.has(t.symbol))
       .map(t => ({
         symbol: t.symbol,
@@ -311,83 +276,86 @@ async function fetchBinanceAlphaTop100() {
       }))
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, 100);
-    const result = { data: alphaTickers, timestamp: Date.now() };
-    alphaCache.set(result);
-    return result;
+
+    saveExchangeData('binance-alpha', sorted);
+    console.log(`✅ [Alpha先物] ${sorted.length}銘柄取得`);
   } catch (error) {
-    if (alphaCache.get()) return alphaCache.get();
-    throw error;
+    console.error('[Alpha先物] エラー:', error.message);
   }
 }
 
 // ════════════════════════════════════════════════════
-// 各取引所のfetch関数マップ
+// 全取引所のデータ一括取得（起動時+正時に呼ぶ）
 // ════════════════════════════════════════════════════
 
-const EXCHANGE_FETCHERS = {
-  'binance-futures': fetchBinanceFuturesTop100,
-  'bitget-spot': fetchBitgetSpotTop100,
-  'upbit-spot': fetchUpbitSpotTop100,
-  'binance-alpha': fetchBinanceAlphaTop100,
-};
+async function fetchAllExchanges() {
+  const timeLabel = getJSTTimeLabel();
+  console.log(`\n🔄 [${timeLabel}] 全取引所データ取得開始...`);
 
-// ════════════════════════════════════════════════════
-// 正時スナップショットスケジューラ
-// ════════════════════════════════════════════════════
+  // 順番に取得（レートリミット回避）
+  await fetchBinanceFutures();
+  await new Promise(r => setTimeout(r, 1000));
+  await fetchBitgetSpot();
+  await new Promise(r => setTimeout(r, 1000));
+  await fetchUpbitSpot();
+  await new Promise(r => setTimeout(r, 1000));
+  await fetchBinanceAlpha();
 
-async function takeAllSnapshots() {
-  for (const [id, fetcher] of Object.entries(EXCHANGE_FETCHERS)) {
-    try {
-      const data = await fetcher();
-      takeSnapshot(id, data);
-    } catch (err) {
-      console.error(`❌ [${id}] スナップショット取得失敗:`, err.message);
-    }
-  }
+  console.log(`✅ [${timeLabel}] 全取引所データ取得完了\n`);
 }
 
-function scheduleHourlySnapshots() {
+// ════════════════════════════════════════════════════
+// 正時スケジューラ
+// ════════════════════════════════════════════════════
+
+function scheduleHourlyFetch() {
   const now = new Date();
-  const msUntilNextHour = (60 - now.getMinutes()) * 60000 - now.getSeconds() * 1000 - now.getMilliseconds();
+  const msUntilNextHour =
+    (60 - now.getMinutes()) * 60000 -
+    now.getSeconds() * 1000 -
+    now.getMilliseconds();
 
-  console.log(`⏰ 次の正時スナップショットまで ${Math.round(msUntilNextHour / 1000)}秒`);
+  console.log(`⏰ 次の正時データ取得まで ${Math.round(msUntilNextHour / 1000)}秒`);
 
   setTimeout(() => {
-    takeAllSnapshots();
+    fetchAllExchanges();
     // 以降は毎時0分に実行
-    setInterval(takeAllSnapshots, 60 * 60 * 1000);
+    setInterval(fetchAllExchanges, 60 * 60 * 1000);
   }, msUntilNextHour);
 }
 
 // ════════════════════════════════════════════════════
-// API Routes
+// API Routes（メモリ上のデータを返すだけ。取引所APIは叩かない）
 // ════════════════════════════════════════════════════
 
-// 汎用ハンドラ: データ + スナップショットを返す
-function createExchangeHandler(exchangeId, fetcher) {
-  return async (req, res) => {
-    try {
-      const result = await fetcher();
-      res.json({
-        ...result,
-        snapshots: getSnapshots(exchangeId),
-      });
-    } catch (error) {
-      res.status(500).json({ error: 'データ取得に失敗しました', details: error.message });
+function createHandler(exchangeId) {
+  return (req, res) => {
+    const data = getExchangeData(exchangeId);
+    if (!data) {
+      return res.status(503).json({ error: 'データ準備中です。しばらくお待ちください。' });
     }
+    res.json(data);
   };
 }
 
-app.get('/api/volume/top100', createExchangeHandler('binance-futures', fetchBinanceFuturesTop100));
-app.get('/api/bitget/spot/top100', createExchangeHandler('bitget-spot', fetchBitgetSpotTop100));
-app.get('/api/upbit/spot/top100', createExchangeHandler('upbit-spot', fetchUpbitSpotTop100));
-app.get('/api/binance/alpha/top100', createExchangeHandler('binance-alpha', fetchBinanceAlphaTop100));
+app.get('/api/volume/top100', createHandler('binance-futures'));
+app.get('/api/bitget/spot/top100', createHandler('bitget-spot'));
+app.get('/api/upbit/spot/top100', createHandler('upbit-spot'));
+app.get('/api/binance/alpha/top100', createHandler('binance-alpha'));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+  const exchanges = Object.keys(store).map(id => ({
+    id,
+    hasData: !!store[id]?.current,
+    snapshots: store[id]?.snapshots?.length || 0,
+    lastUpdate: store[id]?.current?.timestamp
+      ? new Date(store[id].current.timestamp).toISOString()
+      : null,
+  }));
+  res.json({ status: 'ok', uptime: process.uptime(), exchanges });
 });
 
-// ── 本番環境: フロントエンドの静的ファイル配信 ──
+// ── 本番環境: フロントエンド配信 ──
 if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '..', 'frontend', 'dist');
   app.use(express.static(frontendPath));
@@ -399,11 +367,7 @@ if (process.env.NODE_ENV === 'production') {
 // ── サーバー起動 ──
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`✅ サーバー起動: http://localhost:${PORT}`);
-
-  // 起動時スナップショット（初回）
-  console.log('📸 起動時スナップショットを取得中...');
-  await takeAllSnapshots();
-
-  // 正時スケジューラ開始
-  scheduleHourlySnapshots();
+  console.log('📸 起動時データ取得中...');
+  await fetchAllExchanges();
+  scheduleHourlyFetch();
 });

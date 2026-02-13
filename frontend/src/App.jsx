@@ -1,15 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import VolumeTable from './components/VolumeTable';
-import { useExchangeData, TABS, formatVolume } from './utils';
+import { useExchangeData, TABS } from './utils';
 import './index.css';
-
-const REFRESH_INTERVAL = 60000; // 60秒
 
 function App() {
   const [activeTab, setActiveTab] = useState(TABS[0].id);
   const { dataMap, loadingMap, errorMap, lastUpdateMap, fetchData } = useExchangeData();
-  const [refreshing, setRefreshing] = useState(false);
-  const intervalRef = useRef(null);
 
   const currentTab = TABS.find(t => t.id === activeTab);
   const data = dataMap[activeTab];
@@ -17,29 +13,20 @@ function App() {
   const error = errorMap[activeTab];
   const lastUpdate = lastUpdateMap[activeTab];
 
-  // タブ切り替え時・初回ロード
+  // タブ切り替え時・初回ロード（取引所APIは叩かない。サーバーのメモリデータを取得するだけ）
   useEffect(() => {
     if (!dataMap[activeTab]) {
       fetchData(activeTab);
     }
-    // 自動更新
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => fetchData(activeTab), REFRESH_INTERVAL);
-    return () => clearInterval(intervalRef.current);
   }, [activeTab, fetchData]);
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
     await fetchData(activeTab);
-    setTimeout(() => setRefreshing(false), 600);
   }, [fetchData, activeTab]);
 
   const handleTabChange = useCallback((tabId) => {
     setActiveTab(tabId);
   }, []);
-
-
-  const currency = currentTab?.currency || 'USD';
 
   return (
     <>
@@ -58,16 +45,16 @@ function App() {
           <div className="header-right">
             {lastUpdate && (
               <span className="last-update">
-                更新: {lastUpdate.toLocaleTimeString('ja-JP')}
+                データ時刻: {lastUpdate.toLocaleTimeString('ja-JP')}
               </span>
             )}
             <button
-              className={`refresh-btn ${refreshing ? 'loading' : ''}`}
+              className="refresh-btn"
               onClick={handleRefresh}
-              disabled={refreshing}
+              disabled={loading}
             >
-              <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`}>⟳</span>
-              更新
+              <span className={`refresh-icon ${loading ? 'spinning' : ''}`}>⟳</span>
+              再取得
             </button>
           </div>
         </div>
