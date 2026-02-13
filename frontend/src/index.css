@@ -586,13 +586,9 @@ body {
     gap: 10px;
   }
 
-  .stats-bar {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .volume-table tbody td,
   .volume-table thead th {
-    padding: 8px 10px;
+    padding: 5px 6px;
   }
 
   /* タブ: ショートラベル表示 */
@@ -609,14 +605,14 @@ body {
     font-size: 0.8rem;
   }
 
-  /* 小さい画面では一部列を隠す */
-  .volume-table thead th:nth-child(6),
-  .volume-table thead th:nth-child(7),
-  .volume-table thead th:nth-child(8),
-  .volume-table tbody td:nth-child(6),
-  .volume-table tbody td:nth-child(7),
-  .volume-table tbody td:nth-child(8) {
-    display: none;
+  /* テーブル横スクロール */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .volume-table {
+    min-width: 600px;
   }
 
   .tabs-nav {
