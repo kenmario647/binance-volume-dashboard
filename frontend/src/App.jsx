@@ -42,21 +42,6 @@ function App() {
               {currentTab?.badgeText}
             </span>
           </div>
-          <div className="header-right">
-            {lastUpdate && (
-              <span className="last-update">
-                データ時刻: {lastUpdate.toLocaleTimeString('ja-JP')}
-              </span>
-            )}
-            <button
-              className="refresh-btn"
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              <span className={`refresh-icon ${loading ? 'spinning' : ''}`}>⟳</span>
-              再取得
-            </button>
-          </div>
         </div>
       </header>
 
