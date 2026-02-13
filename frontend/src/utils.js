@@ -17,8 +17,8 @@ export function formatVolume(value, currency = 'USD') {
 // 価格のフォーマット
 export function formatPrice(price, currency = 'USD') {
     if (currency === 'KRW') {
-        if (price >= 1000) return `₩${price.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}`;
-        return `₩${price.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}`;
+        if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
     }
     if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
     if (price >= 1) return price.toFixed(4);
