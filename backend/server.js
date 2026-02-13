@@ -246,7 +246,7 @@ async function fetchUpbitSpotTop100() {
         const base = t.market.replace('KRW-', '');
         return {
           symbol: `${base}KRW`,
-          displayName: info.koreanName || base,
+          displayName: base,
           lastPrice: parseFloat(t.trade_price || 0),
           priceChangePercent: parseFloat(t.signed_change_rate || 0) * 100,
           volume: parseFloat(t.acc_trade_volume_24h || 0),
