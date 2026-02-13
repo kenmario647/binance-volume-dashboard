@@ -457,30 +457,33 @@ body {
   min-width: 110px;
 }
 
-.snapshot-cell {
+.snapshot-td {
+  padding: 6px 12px !important;
+  text-align: right;
+}
+
+.snap-content {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  padding: 6px 12px !important;
-  font-size: 0.75rem !important;
 }
 
-.snapshot-cell.muted {
+.snap-muted {
   color: var(--text-muted);
-  display: table-cell;
-  text-align: right;
 }
 
 .snap-rank {
   font-weight: 700;
   color: var(--text-secondary);
   font-size: 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .snap-volume {
   color: var(--text-muted);
   font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .snap-diff {

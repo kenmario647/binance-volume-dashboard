@@ -112,18 +112,20 @@ function VolumeTable({ data, snapshots = [] }) {
                                 {snapshotColumns.map(col => {
                                     const snapData = col.snapshot.rankings[item.symbol];
                                     if (!snapData) {
-                                        return <td key={col.key} className="snapshot-cell muted">-</td>;
+                                        return <td key={col.key} className="snapshot-td"><span className="snap-muted">-</span></td>;
                                     }
-                                    const rankDiff = snapData.rank - rank; // 正=順位が落ちた、負=順位が上がった
+                                    const rankDiff = snapData.rank - rank;
                                     return (
-                                        <td key={col.key} className="snapshot-cell">
-                                            <span className="snap-rank">#{snapData.rank}</span>
-                                            <span className="snap-volume">{formatVolume(snapData.volume)}</span>
-                                            {rankDiff !== 0 && (
-                                                <span className={`snap-diff ${rankDiff < 0 ? 'up' : 'down'}`}>
-                                                    {rankDiff < 0 ? `↑${Math.abs(rankDiff)}` : `↓${rankDiff}`}
-                                                </span>
-                                            )}
+                                        <td key={col.key} className="snapshot-td">
+                                            <div className="snap-content">
+                                                <span className="snap-rank">#{snapData.rank}</span>
+                                                <span className="snap-volume">{formatVolume(snapData.volume)}</span>
+                                                {rankDiff !== 0 && (
+                                                    <span className={`snap-diff ${rankDiff < 0 ? 'up' : 'down'}`}>
+                                                        {rankDiff < 0 ? `↑${Math.abs(rankDiff)}` : `↓${rankDiff}`}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                     );
                                 })}
