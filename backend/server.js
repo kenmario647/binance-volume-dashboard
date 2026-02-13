@@ -308,19 +308,27 @@ async function fetchAllExchanges() {
 // 正時スケジューラ
 // ════════════════════════════════════════════════════
 
-function scheduleHourlyFetch() {
+function scheduleNextHourlyFetch() {
   const now = new Date();
+  // 次の正時（XX:00:02）までのミリ秒を計算（2秒バッファで確実に正時を超える）
   const msUntilNextHour =
     (60 - now.getMinutes()) * 60000 -
     now.getSeconds() * 1000 -
-    now.getMilliseconds();
+    now.getMilliseconds() +
+    2000; // 2秒バッファ
 
-  console.log(`⏰ 次の正時データ取得まで ${Math.round(msUntilNextHour / 1000)}秒`);
+  const nextHour = new Date(now.getTime() + msUntilNextHour);
+  const nextJST = new Date(nextHour.getTime() + 9 * 60 * 60 * 1000);
+  console.log(`⏰ 次の正時データ取得: ${String(nextJST.getUTCHours()).padStart(2, '0')}:00 (${Math.round(msUntilNextHour / 1000)}秒後)`);
 
-  setTimeout(() => {
-    fetchAllExchanges();
-    // 以降は毎時0分に実行
-    setInterval(fetchAllExchanges, 60 * 60 * 1000);
+  setTimeout(async () => {
+    try {
+      await fetchAllExchanges();
+    } catch (err) {
+      console.error('❌ 正時データ取得エラー:', err.message);
+    }
+    // 完了後、次の正時を再計算してスケジュール（ドリフトしない）
+    scheduleNextHourlyFetch();
   }, msUntilNextHour);
 }
 
@@ -369,5 +377,5 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log(`✅ サーバー起動: http://localhost:${PORT}`);
   console.log('📸 起動時データ取得中...');
   await fetchAllExchanges();
-  scheduleHourlyFetch();
+  scheduleNextHourlyFetch();
 });
