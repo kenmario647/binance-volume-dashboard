@@ -108,7 +108,7 @@ function App() {
           <div className="loading-text">{currentTab?.description}データを取得中...</div>
         </div>
       ) : (
-        data && <VolumeTable data={data.data} currency={currency} />
+        data && <VolumeTable data={data.data} snapshots={data.snapshots || []} />
       )}
     </>
   );
