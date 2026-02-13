@@ -1,0 +1,15 @@
+{
+  "name": "binance-futures-volume-dashboard",
+  "version": "1.0.0",
+  "description": "バイナンス先物 出来高ダッシュボード - 上位100銘柄",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

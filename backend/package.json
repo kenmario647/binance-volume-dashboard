@@ -1,0 +1,15 @@
+{
+    "name": "volume-dashboard-backend",
+    "version": "1.0.0",
+    "description": "Binance先物出来高データAPIサーバー",
+    "main": "server.js",
+    "scripts": {
+        "dev": "node server.js",
+        "start": "node server.js"
+    },
+    "dependencies": {
+        "axios": "^1.7.0",
+        "cors": "^2.8.5",
+        "express": "^4.21.0"
+    }
+}
