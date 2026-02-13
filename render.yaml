@@ -3,7 +3,7 @@ services:
     name: binance-volume-dashboard
     runtime: node
     plan: starter
-    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install
+    buildCommand: cd frontend && npm install --include=dev && npm run build && cd ../backend && npm install
     startCommand: cd backend && node server.js
     envVars:
       - key: NODE_ENV
