@@ -38,14 +38,6 @@ function App() {
     setActiveTab(tabId);
   }, []);
 
-  // 統計値
-  const stats = data?.data ? {
-    totalVolume: data.data.reduce((sum, item) => sum + item.quoteVolume, 0),
-    avgChange: data.data.reduce((sum, item) => sum + item.priceChangePercent, 0) / data.data.length,
-    gainers: data.data.filter(item => item.priceChangePercent > 0).length,
-    losers: data.data.filter(item => item.priceChangePercent < 0).length,
-    totalCoins: data.total,
-  } : null;
 
   const currency = currentTab?.currency || 'USD';
 
@@ -98,34 +90,6 @@ function App() {
           ))}
         </div>
       </nav>
-
-      {/* 統計サマリー */}
-      {stats && (
-        <div className="stats-bar">
-          <div className="stat-card">
-            <div className="stat-label">合計出来高 (Top {data.data.length})</div>
-            <div className="stat-value cyan">{formatVolume(stats.totalVolume, currency)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">平均変動率</div>
-            <div className={`stat-value ${stats.avgChange >= 0 ? 'green' : 'red'}`}>
-              {stats.avgChange >= 0 ? '+' : ''}{stats.avgChange.toFixed(2)}%
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">上昇 / 下落</div>
-            <div className="stat-value">
-              <span className="green">{stats.gainers}</span>
-              <span style={{ color: 'var(--text-muted)', margin: '0 6px' }}>/</span>
-              <span className="red">{stats.losers}</span>
-            </div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">全銘柄数</div>
-            <div className="stat-value blue">{stats.totalCoins}</div>
-          </div>
-        </div>
-      )}
 
       {/* エラー状態 */}
       {error && !data && (
