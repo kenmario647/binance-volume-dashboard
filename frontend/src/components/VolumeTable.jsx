@@ -46,10 +46,7 @@ function VolumeTable({ data, currency = 'USD' }) {
         { key: 'symbol', label: '銘柄' },
         { key: 'lastPrice', label: '価格' },
         { key: 'priceChangePercent', label: '24h変動率' },
-        { key: 'quoteVolume', label: currency === 'KRW' ? '24h出来高 (KRW)' : '24h出来高 (USDT)' },
-        { key: 'highPrice', label: '24h高値' },
-        { key: 'lowPrice', label: '24h安値' },
-        { key: 'count', label: '取引回数' },
+        { key: 'quoteVolume', label: '24h出来高 (USDT)' },
     ];
 
     const getSortClass = (key) => {
@@ -126,15 +123,6 @@ function VolumeTable({ data, currency = 'USD' }) {
                                         </span>
                                     </div>
                                 </td>
-
-                                {/* 高値 */}
-                                <td className="price-cell">{formatPrice(item.highPrice, currency)}</td>
-
-                                {/* 安値 */}
-                                <td className="price-cell">{formatPrice(item.lowPrice, currency)}</td>
-
-                                {/* 取引回数 */}
-                                <td className="count-cell">{formatCount(item.count)}</td>
                             </tr>
                         );
                     })}
