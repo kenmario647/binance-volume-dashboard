@@ -1,119 +1,145 @@
 import { useState, useMemo } from 'react';
 import { formatVolume, formatPrice, formatPercent, formatCount, parseSymbol } from '../utils';
 
-const COLUMNS = [
-    { key: 'rank', label: '#', sortable: false },
-    { key: 'symbol', label: '銘柄' },
-    { key: 'lastPrice', label: '価格' },
-    { key: 'priceChangePercent', label: '24h変動率' },
-    { key: 'quoteVolume', label: '24h出来高 (USDT)' },
-    { key: 'highPrice', label: '24h高値' },
-    { key: 'lowPrice', label: '24h安値' },
-    { key: 'count', label: '取引回数' },
-];
-
-function VolumeTable({ data }) {
-    const [sortKey, setSortKey] = useState('quoteVolume');
-    const [sortDir, setSortDir] = useState('desc');
-
-    const handleSort = (key) => {
-        if (key === 'rank') return;
-        if (sortKey === key) {
-            setSortDir(prev => prev === 'desc' ? 'asc' : 'desc');
-        } else {
-            setSortKey(key);
-            setSortDir('desc');
-        }
-    };
+function VolumeTable({ data, currency = 'USD' }) {
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
 
     const sortedData = useMemo(() => {
         if (!data) return [];
-        return [...data].sort((a, b) => {
-            let aVal = a[sortKey];
-            let bVal = b[sortKey];
-            if (typeof aVal === 'string') {
-                return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-            }
-            return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
-        });
-    }, [data, sortKey, sortDir]);
+        let items = [...data];
+        if (sortConfig.key !== null) {
+            items.sort((a, b) => {
+                let valA = a[sortConfig.key];
+                let valB = b[sortConfig.key];
+
+                if (sortConfig.key === 'symbol') {
+                    valA = String(valA).toLowerCase();
+                    valB = String(valB).toLowerCase();
+                } else {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                }
+
+                if (valA < valB) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [data, sortConfig]);
+
+    const requestSort = (key) => {
+        let direction = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const maxVolume = useMemo(() => {
-        if (!data || data.length === 0) return 1;
+        if (!data?.length) return 1;
         return Math.max(...data.map(d => d.quoteVolume));
     }, [data]);
 
+    const columns = [
+        { key: 'rank', label: '#', sortable: false },
+        { key: 'symbol', label: '銘柄' },
+        { key: 'lastPrice', label: '価格' },
+        { key: 'priceChangePercent', label: '24h変動率' },
+        { key: 'quoteVolume', label: currency === 'KRW' ? '24h出来高 (KRW)' : '24h出来高 (USDT)' },
+        { key: 'highPrice', label: '24h高値' },
+        { key: 'lowPrice', label: '24h安値' },
+        { key: 'count', label: '取引回数' },
+    ];
+
+    const getSortClass = (key) => {
+        if (sortConfig.key !== key) return '';
+        return sortConfig.direction;
+    };
+
     return (
-        <div className="table-container">
-            <div className="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            {COLUMNS.map(col => (
-                                <th
-                                    key={col.key}
-                                    className={sortKey === col.key ? 'active' : ''}
-                                    onClick={() => col.sortable !== false && handleSort(col.key)}
-                                    style={col.sortable === false ? { cursor: 'default' } : {}}
-                                >
+        <div className="table-wrapper">
+            <table className="volume-table">
+                <thead>
+                    <tr>
+                        {columns.map(col => (
+                            <th
+                                key={col.key}
+                                className={`${col.sortable !== false ? 'sortable' : ''} ${getSortClass(col.key)}`}
+                                onClick={() => col.sortable !== false && requestSort(col.key)}
+                            >
+                                <span className="th-content">
                                     {col.label}
-                                    {col.sortable !== false && (
+                                    {sortConfig.key === col.key && (
                                         <span className="sort-arrow">
-                                            {sortKey === col.key ? (sortDir === 'desc' ? '▼' : '▲') : '▽'}
+                                            {sortConfig.direction === 'ascending' ? '▲' : '▼'}
                                         </span>
                                     )}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedData.map((item, index) => {
-                            const { base } = parseSymbol(item.symbol);
-                            const changeClass = item.priceChangePercent >= 0 ? 'change-positive' : 'change-negative';
-                            const volPercent = (item.quoteVolume / maxVolume) * 100;
-                            const rankNum = index + 1;
-                            let rankClass = 'rank-default';
-                            if (rankNum === 1) rankClass = 'rank-1';
-                            else if (rankNum === 2) rankClass = 'rank-2';
-                            else if (rankNum === 3) rankClass = 'rank-3';
+                                </span>
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {sortedData.map((item, index) => {
+                        const { base, quote } = parseSymbol(item.symbol);
+                        const displayName = item.displayName || base;
+                        const rank = index + 1;
+                        const changePercent = item.priceChangePercent;
+                        const changeClass = changePercent >= 0 ? 'positive' : 'negative';
+                        const volPercent = Math.min((item.quoteVolume / maxVolume) * 100, 100);
 
-                            return (
-                                <tr key={item.symbol}>
-                                    <td>
-                                        <span className={`rank ${rankClass}`}>{rankNum}</span>
-                                    </td>
-                                    <td>
-                                        <div className="symbol-cell">
-                                            <div>
-                                                <div className="symbol-name">{base}</div>
-                                                <div className="symbol-pair">/ USDT</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>{formatPrice(item.lastPrice)}</td>
-                                    <td className={changeClass}>
-                                        {formatPercent(item.priceChangePercent)}
-                                    </td>
-                                    <td>
-                                        <div className="volume-cell">
-                                            <span className="volume-text">{formatVolume(item.quoteVolume)}</span>
-                                            <div className="volume-bar-wrapper">
-                                                <div
-                                                    className="volume-bar"
-                                                    style={{ width: `${volPercent}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>{formatPrice(item.highPrice)}</td>
-                                    <td>{formatPrice(item.lowPrice)}</td>
-                                    <td>{formatCount(item.count)}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+                        return (
+                            <tr key={item.symbol}>
+                                {/* ランク */}
+                                <td>
+                                    <span className={`rank-badge ${rank <= 3 ? `rank-${rank}` : ''}`}>
+                                        {rank}
+                                    </span>
+                                </td>
+
+                                {/* 銘柄 */}
+                                <td>
+                                    <div className="symbol-cell">
+                                        <span className="symbol-base">{displayName}</span>
+                                        <span className="symbol-quote">/ {quote || 'USDT'}</span>
+                                    </div>
+                                </td>
+
+                                {/* 価格 */}
+                                <td className="price-cell">{formatPrice(item.lastPrice, currency)}</td>
+
+                                {/* 変動率 */}
+                                <td className={changeClass}>
+                                    {formatPercent(changePercent)}
+                                </td>
+
+                                {/* 出来高（バー付き） */}
+                                <td>
+                                    <div className="volume-bar-container">
+                                        <div
+                                            className={`volume-bar ${changeClass}`}
+                                            style={{ width: `${volPercent}%` }}
+                                        />
+                                        <span className="volume-text">
+                                            {formatVolume(item.quoteVolume, currency)}
+                                        </span>
+                                    </div>
+                                </td>
+
+                                {/* 高値 */}
+                                <td className="price-cell">{formatPrice(item.highPrice, currency)}</td>
+
+                                {/* 安値 */}
+                                <td className="price-cell">{formatPrice(item.lowPrice, currency)}</td>
+
+                                {/* 取引回数 */}
+                                <td className="count-cell">{formatCount(item.count)}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
         </div>
     );
 }

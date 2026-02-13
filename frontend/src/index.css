@@ -41,7 +41,9 @@ body {
   min-height: 100vh;
 }
 
-/* ── ヘッダー ── */
+/* ══════════════════════════════════════ */
+/* ヘッダー                              */
+/* ══════════════════════════════════════ */
 .header {
   background: linear-gradient(135deg, rgba(17, 24, 39, 0.95), rgba(26, 31, 46, 0.95));
   backdrop-filter: blur(20px);
@@ -75,12 +77,20 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  font-size: 1.2rem;
+  -webkit-text-fill-color: initial;
 }
 
 .badge {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(59, 130, 246, 0.2);
   border: 1px solid rgba(59, 130, 246, 0.3);
-  color: var(--accent-blue);
+  color: #fff;
   padding: 4px 10px;
   border-radius: 20px;
   font-size: 0.75rem;
@@ -140,11 +150,81 @@ body {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* ── 統計サマリー ── */
+/* ══════════════════════════════════════ */
+/* タブナビゲーション                    */
+/* ══════════════════════════════════════ */
+.tabs-nav {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 60px;
+  z-index: 99;
+}
+
+.tabs-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 32px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tab-btn:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-btn.active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.tab-icon {
+  font-size: 1rem;
+}
+
+.tab-label-short {
+  display: none;
+}
+
+/* ══════════════════════════════════════ */
+/* 統計サマリー                          */
+/* ══════════════════════════════════════ */
 .stats-bar {
   max-width: 1600px;
   margin: 20px auto;
@@ -182,37 +262,49 @@ body {
   font-family: 'JetBrains Mono', monospace;
 }
 
-.stat-value.green { color: var(--accent-green); }
-.stat-value.red { color: var(--accent-red); }
-.stat-value.blue { color: var(--accent-blue); }
-.stat-value.cyan { color: var(--accent-cyan); }
-
-/* ── テーブル ── */
-.table-container {
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 0 32px 40px;
+.stat-value.green,
+.green {
+  color: var(--accent-green);
 }
 
+.stat-value.red,
+.red {
+  color: var(--accent-red);
+}
+
+.stat-value.blue {
+  color: var(--accent-blue);
+}
+
+.stat-value.cyan {
+  color: var(--accent-cyan);
+}
+
+/* ══════════════════════════════════════ */
+/* テーブル                              */
+/* ══════════════════════════════════════ */
 .table-wrapper {
+  max-width: 1600px;
+  margin: 0 auto 40px;
+  padding: 0 32px;
+}
+
+.volume-table {
+  width: 100%;
+  border-collapse: collapse;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 16px;
   overflow: hidden;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-thead {
+.volume-table thead {
   position: sticky;
   top: 0;
   z-index: 10;
 }
 
-thead th {
+.volume-table thead th {
   background: var(--bg-secondary);
   padding: 12px 16px;
   font-size: 0.7rem;
@@ -228,48 +320,44 @@ thead th {
   white-space: nowrap;
 }
 
-thead th:hover {
+.volume-table thead th.sortable:hover {
   color: var(--accent-blue);
 }
 
-thead th.active {
-  color: var(--accent-cyan);
-}
-
-thead th:first-child {
+.volume-table thead th:first-child {
   text-align: center;
   width: 50px;
 }
 
-thead th:nth-child(2) {
+.volume-table thead th:nth-child(2) {
   text-align: left;
 }
 
-thead th .sort-arrow {
-  display: inline-block;
-  margin-left: 4px;
-  font-size: 0.65rem;
-  opacity: 0.5;
+.volume-table thead th .th-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-thead th.active .sort-arrow {
-  opacity: 1;
+.sort-arrow {
+  font-size: 0.6rem;
+  opacity: 0.7;
 }
 
-tbody tr {
+.volume-table tbody tr {
   transition: all 0.15s ease;
   border-bottom: 1px solid rgba(42, 49, 66, 0.5);
 }
 
-tbody tr:hover {
+.volume-table tbody tr:hover {
   background: var(--bg-hover);
 }
 
-tbody tr:last-child {
+.volume-table tbody tr:last-child {
   border-bottom: none;
 }
 
-tbody td {
+.volume-table tbody td {
   padding: 10px 16px;
   font-size: 0.85rem;
   text-align: right;
@@ -277,19 +365,25 @@ tbody td {
   font-weight: 400;
 }
 
-tbody td:first-child {
+.volume-table tbody td:first-child {
   text-align: center;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 0.75rem;
 }
 
-tbody td:nth-child(2) {
+.volume-table tbody td:nth-child(2) {
   text-align: left;
 }
 
+/* 変動率カラー */
+.volume-table tbody td.positive {
+  color: var(--accent-green);
+}
+
+.volume-table tbody td.negative {
+  color: var(--accent-red);
+}
+
 /* ── ランクバッジ ── */
-.rank {
+.rank-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -298,66 +392,92 @@ tbody td:nth-child(2) {
   border-radius: 8px;
   font-size: 0.7rem;
   font-weight: 700;
+  background: var(--bg-primary);
+  color: var(--text-muted);
 }
 
-.rank-1 { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; }
-.rank-2 { background: linear-gradient(135deg, #94a3b8, #64748b); color: #000; }
-.rank-3 { background: linear-gradient(135deg, #b45309, #92400e); color: #fff; }
-.rank-default { background: var(--bg-primary); color: var(--text-muted); }
+.rank-badge.rank-1 {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+}
+
+.rank-badge.rank-2 {
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+  color: #000;
+}
+
+.rank-badge.rank-3 {
+  background: linear-gradient(135deg, #b45309, #92400e);
+  color: #fff;
+}
 
 /* ── シンボル ── */
 .symbol-cell {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 6px;
 }
 
-.symbol-name {
+.symbol-base {
   font-weight: 700;
   font-size: 0.85rem;
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
 }
 
-.symbol-pair {
+.symbol-quote {
   font-size: 0.65rem;
   color: var(--text-muted);
   font-family: 'Inter', sans-serif;
 }
 
-/* ── 変動率 ── */
-.change-positive { color: var(--accent-green); }
-.change-negative { color: var(--accent-red); }
+/* ── 価格 ── */
+.price-cell {
+  color: var(--text-secondary);
+}
+
+/* ── 取引回数 ── */
+.count-cell {
+  color: var(--text-muted);
+}
 
 /* ── 出来高バー ── */
-.volume-cell {
+.volume-bar-container {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.volume-text {
-  min-width: 100px;
-  text-align: right;
-}
-
-.volume-bar-wrapper {
-  flex: 1;
-  height: 6px;
-  background: rgba(59, 130, 246, 0.1);
-  border-radius: 3px;
-  overflow: hidden;
-  min-width: 60px;
+  height: 28px;
+  min-width: 140px;
 }
 
 .volume-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
   height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
+  border-radius: 4px;
+  opacity: 0.15;
   transition: width 0.5s ease;
 }
 
-/* ── ローディング ── */
+.volume-bar.positive {
+  background: var(--accent-cyan);
+}
+
+.volume-bar.negative {
+  background: var(--accent-red);
+}
+
+.volume-text {
+  position: relative;
+  z-index: 1;
+  font-size: 0.8rem;
+  padding-left: 8px;
+}
+
+/* ══════════════════════════════════════ */
+/* ローディング                          */
+/* ══════════════════════════════════════ */
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -381,7 +501,9 @@ tbody td:nth-child(2) {
   font-size: 0.9rem;
 }
 
-/* ── エラー ── */
+/* ══════════════════════════════════════ */
+/* エラー                                */
+/* ══════════════════════════════════════ */
 .error-container {
   display: flex;
   flex-direction: column;
@@ -405,17 +527,91 @@ tbody td:nth-child(2) {
   font-size: 0.85rem;
 }
 
-/* ── レスポンシブ ── */
+/* ══════════════════════════════════════ */
+/* レスポンシブ                          */
+/* ══════════════════════════════════════ */
 @media (max-width: 1200px) {
-  .header { padding: 12px 16px; }
-  .stats-bar { padding: 0 16px; }
-  .table-container { padding: 0 16px 40px; }
-  .volume-bar-wrapper { display: none; }
+  .header {
+    padding: 12px 16px;
+  }
+
+  .stats-bar {
+    padding: 0 16px;
+  }
+
+  .table-wrapper {
+    padding: 0 16px 40px;
+  }
+
+  .tabs-container {
+    padding: 0 16px;
+  }
 }
 
 @media (max-width: 768px) {
-  html { font-size: 12px; }
-  .header-content { flex-direction: column; gap: 12px; }
-  .stats-bar { grid-template-columns: repeat(2, 1fr); }
-  tbody td, thead th { padding: 8px 10px; }
+  html {
+    font-size: 12px;
+  }
+
+  .header-content {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .stats-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .volume-table tbody td,
+  .volume-table thead th {
+    padding: 8px 10px;
+  }
+
+  /* タブ: ショートラベル表示 */
+  .tab-label-full {
+    display: none;
+  }
+
+  .tab-label-short {
+    display: inline;
+  }
+
+  .tab-btn {
+    padding: 10px 14px;
+    font-size: 0.8rem;
+  }
+
+  /* 小さい画面では一部列を隠す */
+  .volume-table thead th:nth-child(6),
+  .volume-table thead th:nth-child(7),
+  .volume-table thead th:nth-child(8),
+  .volume-table tbody td:nth-child(6),
+  .volume-table tbody td:nth-child(7),
+  .volume-table tbody td:nth-child(8) {
+    display: none;
+  }
+
+  .tabs-nav {
+    top: auto;
+    position: relative;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-bar {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 12px 14px;
+  }
+
+  .stat-value {
+    font-size: 1.1rem;
+  }
+
+  .volume-bar-container {
+    min-width: 80px;
+  }
 }

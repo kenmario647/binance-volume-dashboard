@@ -1,69 +1,140 @@
 import { useState, useCallback } from 'react';
 
 /**
- * 数値をフォーマットする関数群
+ * 数値フォーマット関数群
  */
 
 // USDT建て出来高のフォーマット
-export function formatVolume(value) {
-    if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-    if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-    if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}K`;
-    return `$${value.toFixed(0)}`;
+export function formatVolume(value, currency = 'USD') {
+    const prefix = currency === 'KRW' ? '₩' : '$';
+    if (currency === 'KRW') {
+        if (value >= 1e12) return `${prefix}${(value / 1e12).toFixed(2)}T`;
+        if (value >= 1e8) return `${prefix}${(value / 1e8).toFixed(2)}億`;
+        if (value >= 1e4) return `${prefix}${(value / 1e4).toFixed(0)}万`;
+        return `${prefix}${value.toLocaleString()}`;
+    }
+    if (value >= 1e9) return `${prefix}${(value / 1e9).toFixed(2)}B`;
+    if (value >= 1e6) return `${prefix}${(value / 1e6).toFixed(2)}M`;
+    if (value >= 1e3) return `${prefix}${(value / 1e3).toFixed(2)}K`;
+    return `${prefix}${value.toFixed(2)}`;
 }
 
 // 価格のフォーマット
-export function formatPrice(price) {
-    if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export function formatPrice(price, currency = 'USD') {
+    if (currency === 'KRW') {
+        if (price >= 1000) return `₩${price.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}`;
+        return `₩${price.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}`;
+    }
+    if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
     if (price >= 1) return price.toFixed(4);
-    if (price >= 0.001) return price.toFixed(6);
+    if (price >= 0.01) return price.toFixed(5);
     return price.toFixed(8);
 }
 
 // 変動率のフォーマット
-export function formatPercent(percent) {
-    const sign = percent >= 0 ? '+' : '';
-    return `${sign}${percent.toFixed(2)}%`;
+export function formatPercent(value) {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(2)}%`;
 }
 
 // 取引回数のフォーマット
 export function formatCount(count) {
+    if (!count) return '-';
     if (count >= 1e6) return `${(count / 1e6).toFixed(1)}M`;
-    if (count >= 1e3) return `${(count / 1e3).toFixed(0)}K`;
+    if (count >= 1e3) return `${(count / 1e3).toFixed(1)}K`;
     return count.toLocaleString();
 }
 
-// シンボルからペア名を抽出
+// シンボル表示名のパース
 export function parseSymbol(symbol) {
-    const base = symbol.replace('USDT', '');
-    return { base, quote: 'USDT' };
+    const suffixes = ['USDT', 'KRW'];
+    for (const suffix of suffixes) {
+        if (symbol.endsWith(suffix)) {
+            return {
+                base: symbol.slice(0, -suffix.length),
+                quote: suffix,
+            };
+        }
+    }
+    return { base: symbol, quote: '' };
 }
 
-/**
- * データ取得用のカスタムフック
- */
-export function useVolumeData() {
-    const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [lastUpdate, setLastUpdate] = useState(null);
+// ── タブ定義 ──
+export const TABS = [
+    {
+        id: 'binance-futures',
+        label: 'Binance先物',
+        shortLabel: 'BN先物',
+        endpoint: '/api/volume/top100',
+        currency: 'USD',
+        icon: '₿',
+        color: '#f0b90b',
+        description: 'Binance USDT-M 先物',
+        badgeText: 'TOP 100',
+    },
+    {
+        id: 'bitget-spot',
+        label: 'Bitget現物',
+        shortLabel: 'Bitget',
+        endpoint: '/api/bitget/spot/top100',
+        currency: 'USD',
+        icon: '🟢',
+        color: '#00d991',
+        description: 'Bitget 現物',
+        badgeText: 'TOP 100',
+    },
+    {
+        id: 'upbit-spot',
+        label: 'Upbit現物',
+        shortLabel: 'Upbit',
+        endpoint: '/api/upbit/spot/top100',
+        currency: 'KRW',
+        icon: '🟣',
+        color: '#093687',
+        description: 'Upbit KRW 現物',
+        badgeText: 'TOP 100',
+    },
+    {
+        id: 'binance-alpha',
+        label: 'Binance Alpha',
+        shortLabel: 'Alpha',
+        endpoint: '/api/binance/alpha/top100',
+        currency: 'USD',
+        icon: '⚡',
+        color: '#e040fb',
+        description: 'Binance Alpha 先物',
+        badgeText: 'ALPHA',
+    },
+];
 
-    const fetchData = useCallback(async () => {
+// ── データ取得カスタムフック ──
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
+export function useExchangeData() {
+    const [dataMap, setDataMap] = useState({});
+    const [loadingMap, setLoadingMap] = useState({});
+    const [errorMap, setErrorMap] = useState({});
+    const [lastUpdateMap, setLastUpdateMap] = useState({});
+
+    const fetchData = useCallback(async (tabId) => {
+        const tab = TABS.find(t => t.id === tabId);
+        if (!tab) return;
+
+        setLoadingMap(prev => ({ ...prev, [tabId]: true }));
+        setErrorMap(prev => ({ ...prev, [tabId]: null }));
+
         try {
-            setLoading(true);
-            setError(null);
-            const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
-            const response = await fetch(`${apiBase}/api/volume/top100`);
+            const response = await fetch(`${API_BASE}${tab.endpoint}`);
             if (!response.ok) throw new Error(`HTTP error ${response.status}`);
             const result = await response.json();
-            setData(result);
-            setLastUpdate(new Date());
+            setDataMap(prev => ({ ...prev, [tabId]: result }));
+            setLastUpdateMap(prev => ({ ...prev, [tabId]: new Date() }));
         } catch (err) {
-            setError(err.message);
+            setErrorMap(prev => ({ ...prev, [tabId]: err.message }));
         } finally {
-            setLoading(false);
+            setLoadingMap(prev => ({ ...prev, [tabId]: false }));
         }
     }, []);
 
-    return { data, loading, error, lastUpdate, fetchData };
+    return { dataMap, loadingMap, errorMap, lastUpdateMap, fetchData };
 }
