@@ -7,12 +7,7 @@ import { useState, useCallback } from 'react';
 // USDT建て出来高のフォーマット
 export function formatVolume(value, currency = 'USD') {
     const prefix = currency === 'KRW' ? '₩' : '$';
-    if (currency === 'KRW') {
-        if (value >= 1e12) return `${prefix}${(value / 1e12).toFixed(2)}T`;
-        if (value >= 1e8) return `${prefix}${(value / 1e8).toFixed(2)}億`;
-        if (value >= 1e4) return `${prefix}${(value / 1e4).toFixed(0)}万`;
-        return `${prefix}${value.toLocaleString()}`;
-    }
+    if (value >= 1e12) return `${prefix}${(value / 1e12).toFixed(2)}T`;
     if (value >= 1e9) return `${prefix}${(value / 1e9).toFixed(2)}B`;
     if (value >= 1e6) return `${prefix}${(value / 1e6).toFixed(2)}M`;
     if (value >= 1e3) return `${prefix}${(value / 1e3).toFixed(2)}K`;
