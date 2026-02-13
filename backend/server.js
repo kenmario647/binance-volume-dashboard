@@ -235,35 +235,46 @@ async function fetchUpbitSpotTop100() {
     const response = await fetchWithRetry(upbitApi, `/v1/ticker?markets=${marketCodes}`);
     const tickers = response.data;
 
+    // USDT/KRWレートからKRW→USD換算レートを取得
+    let krwToUsd = 1 / 1450; // デフォルト（フォールバック）
+    const usdtTicker = tickers.find(t => t.market === 'KRW-USDT');
+    if (usdtTicker && usdtTicker.trade_price) {
+      krwToUsd = 1 / parseFloat(usdtTicker.trade_price);
+      console.log(`✅ [Upbit] KRW/USD レート: 1 USD = ₩${usdtTicker.trade_price}`);
+    }
+
     // マーケット名のマップを作成
     const nameMap = {};
     markets.forEach(m => { nameMap[m.market] = m; });
 
     const sorted = tickers
+      .filter(t => t.market !== 'KRW-USDT') // USDTは除外
       .map(t => {
-        const info = nameMap[t.market] || {};
-        // KRW-BTC → BTCKRW 形式に変換
         const base = t.market.replace('KRW-', '');
+        const priceKrw = parseFloat(t.trade_price || 0);
+        const volumeKrw = parseFloat(t.acc_trade_price_24h || 0);
+        const highKrw = parseFloat(t.high_price || 0);
+        const lowKrw = parseFloat(t.low_price || 0);
         return {
-          symbol: `${base}KRW`,
+          symbol: `${base}USDT`,
           displayName: base,
-          lastPrice: parseFloat(t.trade_price || 0),
+          lastPrice: priceKrw * krwToUsd,
           priceChangePercent: parseFloat(t.signed_change_rate || 0) * 100,
           volume: parseFloat(t.acc_trade_volume_24h || 0),
-          quoteVolume: parseFloat(t.acc_trade_price_24h || 0),
-          highPrice: parseFloat(t.high_price || 0),
-          lowPrice: parseFloat(t.low_price || 0),
+          quoteVolume: volumeKrw * krwToUsd,
+          highPrice: highKrw * krwToUsd,
+          lowPrice: lowKrw * krwToUsd,
           weightedAvgPrice: 0,
           count: 0,
-          currency: 'KRW',
+          currency: 'USD',
         };
       })
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, 100);
 
-    const result = { data: sorted, timestamp: Date.now(), total: tickers.length };
+    const result = { data: sorted, timestamp: Date.now(), total: tickers.length - 1 };
     upbitCache.set(result);
-    console.log(`✅ [Upbit現物] ${sorted.length}銘柄 / 合計${tickers.length}`);
+    console.log(`✅ [Upbit現物] ${sorted.length}銘柄 / 合計${tickers.length - 1} (USD換算済)`);
     return result;
   } catch (error) {
     console.error('[Upbit現物] エラー:', error.message);

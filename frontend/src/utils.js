@@ -83,10 +83,10 @@ export const TABS = [
         label: 'Upbit現物',
         shortLabel: 'Upbit',
         endpoint: '/api/upbit/spot/top100',
-        currency: 'KRW',
+        currency: 'USD',
         icon: '🟣',
         color: '#093687',
-        description: 'Upbit KRW 現物',
+        description: 'Upbit 現物 (USD換算)',
         badgeText: 'TOP 100',
     },
     {
