@@ -20,18 +20,20 @@ const DEFAULT_HEADERS = {
   'Accept-Encoding': 'gzip, deflate, br',
 };
 
-async function fetchWithRetry(axiosInstance, url, maxRetries = 3) {
+async function fetchWithRetry(axiosInstance, url, maxRetries = 5) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        const delay = Math.pow(2, attempt) * 1000;
+        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+        console.log(`  ⏳ リトライ ${attempt + 1}/${maxRetries} (${Math.round(delay / 1000)}秒待機)...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
       return await axiosInstance.get(url);
     } catch (error) {
       const status = error.response?.status;
-      console.error(`❌ API失敗 (${attempt + 1}/${maxRetries}): ${url} - ${status || 'N/A'}`);
-      if (status && status >= 400 && status < 500 && status !== 418 && status !== 429) throw error;
+      const code = error.code || 'UNKNOWN';
+      console.error(`❌ API失敗 (${attempt + 1}/${maxRetries}): ${url} - status=${status || 'N/A'} code=${code}`);
+      if (status && status >= 400 && status < 500 && status !== 418 && status !== 429 && status !== 403) throw error;
       if (attempt === maxRetries - 1) throw error;
     }
   }
@@ -77,6 +79,26 @@ function saveExchangeData(exchangeId, data) {
   console.log(`📸 [${exchangeId}] データ保存: ${timeLabel} (スナップショット ${store[exchangeId].snapshots.length}件)`);
 }
 
+// API失敗時に前回データでスナップショットだけ保存する
+function saveSnapshotFallback(exchangeId) {
+  const s = store[exchangeId];
+  if (!s?.current?.data?.length) return false;
+
+  const timeLabel = getJSTTimeLabel();
+  const rankings = {};
+  s.current.data.forEach((item, index) => {
+    rankings[item.symbol] = { rank: index + 1, volume: item.quoteVolume };
+  });
+
+  s.snapshots.push({ time: timeLabel, timestamp: Date.now(), rankings });
+  while (s.snapshots.length > MAX_SNAPSHOTS) {
+    s.snapshots.shift();
+  }
+
+  console.log(`⚠️ [${exchangeId}] フォールバック: 前回データでスナップショット保存 ${timeLabel} (計${s.snapshots.length}件)`);
+  return true;
+}
+
 function getExchangeData(exchangeId) {
   const s = store[exchangeId];
   if (!s || !s.current) return null;
@@ -93,7 +115,7 @@ function getExchangeData(exchangeId) {
 
 const binanceApi = axios.create({
   baseURL: 'https://fapi.binance.com',
-  timeout: 15000,
+  timeout: 30000,
   headers: DEFAULT_HEADERS,
 });
 
@@ -135,7 +157,8 @@ async function fetchBinanceFutures() {
     saveExchangeData('binance-futures', sorted);
     console.log(`✅ [Binance先物] ${sorted.length}銘柄取得`);
   } catch (error) {
-    console.error('[Binance先物] エラー:', error.message);
+    console.error(`[Binance先物] エラー: ${error.message} (code=${error.code || 'N/A'}, status=${error.response?.status || 'N/A'})`);
+    saveSnapshotFallback('binance-futures');
   }
 }
 
@@ -280,7 +303,8 @@ async function fetchBinanceAlpha() {
     saveExchangeData('binance-alpha', sorted);
     console.log(`✅ [Alpha先物] ${sorted.length}銘柄取得`);
   } catch (error) {
-    console.error('[Alpha先物] エラー:', error.message);
+    console.error(`[Alpha先物] エラー: ${error.message} (code=${error.code || 'N/A'}, status=${error.response?.status || 'N/A'})`);
+    saveSnapshotFallback('binance-alpha');
   }
 }
 
