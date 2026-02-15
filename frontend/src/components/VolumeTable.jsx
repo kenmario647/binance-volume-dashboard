@@ -105,20 +105,27 @@ function VolumeTable({ data, snapshots = [] }) {
                                 <td className="volume-cell">{formatVolume(item.quoteVolume)}</td>
 
                                 {/* スナップショット列 */}
-                                {snapshotColumns.map(col => {
+                                {snapshotColumns.map((col, colIdx) => {
                                     const snapData = col.snapshot.rankings[item.symbol];
                                     if (!snapData) {
                                         return <td key={col.key} className="snapshot-td"><span className="snap-muted">-</span></td>;
                                     }
-                                    const rankDiff = snapData.rank - rank;
+                                    // 前回スナップショットとの順位差（最初のスナップショットは変動なし）
+                                    let rankDiff = 0;
+                                    if (colIdx > 0) {
+                                        const prevSnap = snapshotColumns[colIdx - 1].snapshot.rankings[item.symbol];
+                                        if (prevSnap) {
+                                            rankDiff = prevSnap.rank - snapData.rank; // 正=上昇、負=下降
+                                        }
+                                    }
                                     return (
                                         <td key={col.key} className="snapshot-td">
                                             <div className="snap-content">
                                                 <span className="snap-rank">#{snapData.rank}</span>
                                                 <span className="snap-volume">{formatVolume(snapData.volume)}</span>
                                                 {rankDiff !== 0 && (
-                                                    <span className={`snap-diff ${rankDiff < 0 ? 'up' : 'down'}`}>
-                                                        {rankDiff < 0 ? `↑${Math.abs(rankDiff)}` : `↓${rankDiff}`}
+                                                    <span className={`snap-diff ${rankDiff > 0 ? 'up' : 'down'}`}>
+                                                        {rankDiff > 0 ? `↑${rankDiff}` : `↓${Math.abs(rankDiff)}`}
                                                     </span>
                                                 )}
                                             </div>
