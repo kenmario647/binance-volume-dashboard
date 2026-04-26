@@ -7,12 +7,12 @@ const MOBILE_SNAPSHOT_LIMIT = 6;
 function VolumeTable({ data, snapshots = [] }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
 
-    // スマホ・Fold 7展開時(<=900px)では表示するスナップショットを最新の MOBILE_SNAPSHOT_LIMIT 件に絞る
+    // スマホ・Fold 7展開時(<=820px)では表示するスナップショットを最新の MOBILE_SNAPSHOT_LIMIT 件に絞る
     const [isMobile, setIsMobile] = useState(
-        typeof window !== 'undefined' ? window.matchMedia('(max-width: 900px)').matches : false
+        typeof window !== 'undefined' ? window.matchMedia('(max-width: 820px)').matches : false
     );
     useEffect(() => {
-        const mq = window.matchMedia('(max-width: 900px)');
+        const mq = window.matchMedia('(max-width: 820px)');
         const update = () => setIsMobile(mq.matches);
         update();
         mq.addEventListener('change', update);

@@ -602,7 +602,7 @@ body {
 }
 
 /* ── 中間サイズ(Fold 7展開時、タブレット縦) ── */
-@media (max-width: 900px) {
+@media (max-width: 820px) {
   html {
     font-size: 14px;
   }
@@ -652,13 +652,13 @@ body {
   .symbol-quote { font-size: 0.75rem; }
   .volume-cell { font-size: 0.9rem; }
 
-  /* スナップ列を少し細く */
+  /* スナップ列を少し細く(Fold 7展開 769px に収まるよう min-width: 80) */
   .snapshot-header {
-    min-width: 96px;
-    font-size: 0.75rem !important;
-    padding: 8px 6px !important;
+    min-width: 80px;
+    font-size: 0.72rem !important;
+    padding: 8px 4px !important;
   }
-  .snapshot-td { padding: 6px 6px !important; }
+  .snapshot-td { padding: 6px 4px !important; }
   .snap-rank { font-size: 0.85rem; }
   .snap-volume { font-size: 0.72rem; }
   .snap-diff { font-size: 0.72rem; padding: 1px 4px; }
