@@ -63,12 +63,10 @@ function VolumeTable({ data, snapshots = [] }) {
         { key: 'quoteVolume', label: '24h出来高' },
     ];
 
-    // スナップショット列（最大6つ、最新を左に配置 = スマホでも一番見たい列が即見える）
-    const snapshotColumns = [...snapshots].reverse().map((snap, idx, arr) => ({
+    // スナップショット列（最大6つ、時系列の古い順）
+    const snapshotColumns = snapshots.map((snap, idx) => ({
         key: `snap_${idx}`,
-        label: idx === 0
-            ? `${snap.time} (現在)`
-            : (idx === arr.length - 1 ? `${snap.time} (起動)` : snap.time),
+        label: idx === 0 && snapshots.length > 0 ? `${snap.time} (起動)` : snap.time,
         snapshot: snap,
     }));
 
@@ -140,12 +138,12 @@ function VolumeTable({ data, snapshots = [] }) {
                                     if (!snapData) {
                                         return <td key={col.key} className="snapshot-td"><span className="snap-muted">-</span></td>;
                                     }
-                                    // 1h前(=右隣の列)との順位差。最右(=最古)はリファレンス無しなので0。
+                                    // 前回スナップショット(=左隣の列)との順位差。最左(=最古)はリファレンス無しなので0。
                                     let rankDiff = 0;
-                                    if (colIdx < snapshotColumns.length - 1) {
-                                        const earlierSnap = snapshotColumns[colIdx + 1].snapshot.rankings[item.symbol];
-                                        if (earlierSnap) {
-                                            rankDiff = earlierSnap.rank - snapData.rank; // 正=上昇、負=下降
+                                    if (colIdx > 0) {
+                                        const prevSnap = snapshotColumns[colIdx - 1].snapshot.rankings[item.symbol];
+                                        if (prevSnap) {
+                                            rankDiff = prevSnap.rank - snapData.rank; // 正=上昇、負=下降
                                         }
                                     }
                                     return (
