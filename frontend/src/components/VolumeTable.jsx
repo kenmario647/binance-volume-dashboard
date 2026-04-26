@@ -1,8 +1,25 @@
 import { useState, useMemo } from 'react';
 import { formatVolume, formatPrice, formatPercent, parseSymbol } from '../utils';
 
+const PUMP_THRESHOLD = 10;
+
 function VolumeTable({ data, snapshots = [] }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
+
+    // PUMP判定: 1h前スナップ → 現在(最新スナップ)の順位上昇のみで評価
+    // 前回スナップに無い = 圏外(>100位)からのエントリ扱い
+    const getPumpInfo = (symbol) => {
+        if (snapshots.length < 2) return { score: 0, isNew: false, prevRank: null, curRank: null };
+        const current = snapshots[snapshots.length - 1];
+        const previous = snapshots[snapshots.length - 2];
+        const curRank = current?.rankings[symbol]?.rank;
+        const prevRank = previous?.rankings[symbol]?.rank;
+        if (curRank == null) return { score: 0, isNew: false, prevRank, curRank };
+        if (prevRank == null) {
+            return { score: 101 - curRank, isNew: true, prevRank: null, curRank };
+        }
+        return { score: prevRank - curRank, isNew: false, prevRank, curRank };
+    };
 
     const sortedData = useMemo(() => {
         if (!data) return [];
@@ -89,8 +106,14 @@ function VolumeTable({ data, snapshots = [] }) {
                         const changePercent = item.priceChangePercent;
                         const changeClass = changePercent >= 0 ? 'positive' : 'negative';
 
+                        const pump = getPumpInfo(item.symbol);
+                        const isPump = pump.score >= PUMP_THRESHOLD;
+                        const pumpTitle = pump.isNew
+                            ? `1h前は圏外 (>100位) → 現在 #${pump.curRank}`
+                            : `1h前 #${pump.prevRank} → 現在 #${pump.curRank} (+${pump.score})`;
+
                         return (
-                            <tr key={item.symbol}>
+                            <tr key={item.symbol} className={isPump ? 'pump-row' : ''}>
                                 <td>
                                     <span className={`rank-badge ${rank <= 3 ? `rank-${rank}` : ''}`}>
                                         {rank}
@@ -98,6 +121,11 @@ function VolumeTable({ data, snapshots = [] }) {
                                 </td>
                                 <td>
                                     <div className="symbol-cell">
+                                        {isPump && (
+                                            <span className="pump-icon" title={pumpTitle}>
+                                                {pump.isNew ? '🆕' : '🔥'}
+                                            </span>
+                                        )}
                                         <span className="symbol-base">{displayName}</span>
                                         <span className="symbol-quote">/ {quote || 'USDT'}</span>
                                     </div>
@@ -121,13 +149,15 @@ function VolumeTable({ data, snapshots = [] }) {
                                     return (
                                         <td key={col.key} className="snapshot-td">
                                             <div className="snap-content">
-                                                <span className="snap-rank">#{snapData.rank}</span>
-                                                <span className="snap-volume">{formatVolume(snapData.volume)}</span>
                                                 {rankDiff !== 0 && (
                                                     <span className={`snap-diff ${rankDiff > 0 ? 'up' : 'down'}`}>
                                                         {rankDiff > 0 ? `↑${rankDiff}` : `↓${Math.abs(rankDiff)}`}
                                                     </span>
                                                 )}
+                                                <div className="snap-stack">
+                                                    <span className="snap-rank">#{snapData.rank}</span>
+                                                    <span className="snap-volume">{formatVolume(snapData.volume)}</span>
+                                                </div>
                                             </div>
                                         </td>
                                     );
