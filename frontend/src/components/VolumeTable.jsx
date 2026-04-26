@@ -6,7 +6,7 @@ const PUMP_THRESHOLD = 10;
 function VolumeTable({ data, snapshots = [] }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
 
-    // PUMP判定: 1h前スナップ → 現在(最新スナップ)の順位上昇のみで評価
+    // PUMP判定: 30分前スナップ → 現在(最新スナップ)の順位上昇のみで評価
     // 前回スナップに無い = 圏外(>100位)からのエントリ扱い
     const getPumpInfo = (symbol) => {
         if (snapshots.length < 2) return { score: 0, isNew: false, prevRank: null, curRank: null };
@@ -109,8 +109,8 @@ function VolumeTable({ data, snapshots = [] }) {
                         const pump = getPumpInfo(item.symbol);
                         const isPump = pump.score >= PUMP_THRESHOLD;
                         const pumpTitle = pump.isNew
-                            ? `1h前は圏外 (>100位) → 現在 #${pump.curRank}`
-                            : `1h前 #${pump.prevRank} → 現在 #${pump.curRank} (+${pump.score})`;
+                            ? `30分前は圏外 (>100位) → 現在 #${pump.curRank}`
+                            : `30分前 #${pump.prevRank} → 現在 #${pump.curRank} (+${pump.score})`;
 
                         return (
                             <tr key={item.symbol} className={isPump ? 'pump-row' : ''}>
@@ -138,7 +138,7 @@ function VolumeTable({ data, snapshots = [] }) {
                                     if (!snapData) {
                                         return <td key={col.key} className="snapshot-td"><span className="snap-muted">-</span></td>;
                                     }
-                                    // 前回スナップショット(=左隣の列)との順位差。最左(=最古)はリファレンス無しなので0。
+                                    // 前回スナップショット(=左隣の列、30分前)との順位差。最左(=最古)はリファレンス無しなので0。
                                     let rankDiff = 0;
                                     if (colIdx > 0) {
                                         const prevSnap = snapshotColumns[colIdx - 1].snapshot.rankings[item.symbol];

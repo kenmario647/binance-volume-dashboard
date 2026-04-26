@@ -48,7 +48,7 @@ function getJSTTimeLabel() {
 // ════════════════════════════════════════════════════
 // データストア
 // 各取引所の「最新データ」+「スナップショット履歴」を保持
-// 取引所APIは起動時と正時のみ叩く。それ以外はメモリのデータを返す
+// 取引所APIは起動時と30分刻み(XX:00, XX:30)のみ叩く。それ以外はメモリのデータを返す
 // ════════════════════════════════════════════════════
 
 const MAX_SNAPSHOTS = 6;
@@ -329,31 +329,32 @@ async function fetchAllExchanges() {
 }
 
 // ════════════════════════════════════════════════════
-// 正時スケジューラ
+// 30分スケジューラ（毎時 00 分・30 分にデータ取得）
 // ════════════════════════════════════════════════════
 
-function scheduleNextHourlyFetch() {
+function scheduleNextHalfHourlyFetch() {
   const now = new Date();
-  // 次の正時（XX:00:02）までのミリ秒を計算（2秒バッファで確実に正時を超える）
-  const msUntilNextHour =
-    (60 - now.getMinutes()) * 60000 -
+  // 次の30分刻み（XX:00 または XX:30）までのミリ秒を計算（2秒バッファで確実に超える）
+  const minutesUntilNext = 30 - (now.getMinutes() % 30);
+  const msUntilNext =
+    minutesUntilNext * 60000 -
     now.getSeconds() * 1000 -
     now.getMilliseconds() +
     2000; // 2秒バッファ
 
-  const nextHour = new Date(now.getTime() + msUntilNextHour);
-  const nextJST = new Date(nextHour.getTime() + 9 * 60 * 60 * 1000);
-  console.log(`⏰ 次の正時データ取得: ${String(nextJST.getUTCHours()).padStart(2, '0')}:00 (${Math.round(msUntilNextHour / 1000)}秒後)`);
+  const nextTime = new Date(now.getTime() + msUntilNext);
+  const nextJST = new Date(nextTime.getTime() + 9 * 60 * 60 * 1000);
+  console.log(`⏰ 次のデータ取得: ${String(nextJST.getUTCHours()).padStart(2, '0')}:${String(nextJST.getUTCMinutes()).padStart(2, '0')} (${Math.round(msUntilNext / 1000)}秒後)`);
 
   setTimeout(async () => {
     try {
       await fetchAllExchanges();
     } catch (err) {
-      console.error('❌ 正時データ取得エラー:', err.message);
+      console.error('❌ 30分データ取得エラー:', err.message);
     }
-    // 完了後、次の正時を再計算してスケジュール（ドリフトしない）
-    scheduleNextHourlyFetch();
-  }, msUntilNextHour);
+    // 完了後、次の30分刻みを再計算してスケジュール（ドリフトしない）
+    scheduleNextHalfHourlyFetch();
+  }, msUntilNext);
 }
 
 // ════════════════════════════════════════════════════
@@ -401,5 +402,5 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log(`✅ サーバー起動: http://localhost:${PORT}`);
   console.log('📸 起動時データ取得中...');
   await fetchAllExchanges();
-  scheduleNextHourlyFetch();
+  scheduleNextHalfHourlyFetch();
 });
