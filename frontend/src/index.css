@@ -630,14 +630,48 @@ body {
     font-size: 0.9rem;
   }
 
-  /* テーブル横スクロール */
+  /* スマホでは横スクロール無しで収まるよう、最新スナップ列だけ表示し古い列は隠す */
   .table-wrapper {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
   }
 
   .volume-table {
-    min-width: 600px;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  /* 固定3列(#, 銘柄, 24h出来高)+ 最新スナップ1列のみ表示。5列目以降(=古いスナップ)を隠す */
+  .volume-table thead th:nth-child(n+5),
+  .volume-table tbody td:nth-child(n+5) {
+    display: none;
+  }
+
+  /* 残った最新スナップ列の幅を抑える */
+  .snapshot-header {
+    min-width: 0 !important;
+    width: 26%;
+  }
+
+  .volume-table thead th:first-child {
+    width: 12%;
+  }
+
+  .volume-table thead th:nth-child(2) {
+    width: 36%;
+  }
+
+  .volume-table thead th:nth-child(3) {
+    width: 26%;
+  }
+
+  /* セル内の余白も詰める */
+  .snapshot-td,
+  .volume-table tbody td:nth-child(3) {
+    padding: 8px 6px !important;
+  }
+
+  .snap-content {
+    gap: 4px;
   }
 
   .tabs-nav {
