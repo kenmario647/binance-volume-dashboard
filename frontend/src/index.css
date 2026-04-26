@@ -601,6 +601,81 @@ body {
   }
 }
 
+/* ── 中間サイズ(Fold 7展開時、タブレット縦) ── */
+@media (max-width: 900px) {
+  html {
+    font-size: 14px;
+  }
+
+  .header {
+    padding: 10px 16px;
+  }
+
+  .header-content {
+    gap: 8px;
+  }
+
+  .logo {
+    font-size: 1.4rem;
+  }
+
+  .badge {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+  }
+
+  /* タブ: ショートラベル表示 */
+  .tab-label-full {
+    display: none;
+  }
+
+  .tab-label-short {
+    display: inline;
+  }
+
+  .tab-btn {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+
+  /* テーブルセルの余白を詰める */
+  .volume-table tbody td,
+  .volume-table thead th {
+    padding: 6px 8px;
+  }
+
+  .volume-table tbody td {
+    font-size: 0.9rem;
+  }
+
+  .symbol-base { font-size: 0.9rem; }
+  .symbol-quote { font-size: 0.75rem; }
+  .volume-cell { font-size: 0.9rem; }
+
+  /* スナップ列を少し細く */
+  .snapshot-header {
+    min-width: 96px;
+    font-size: 0.75rem !important;
+    padding: 8px 6px !important;
+  }
+  .snapshot-td { padding: 6px 6px !important; }
+  .snap-rank { font-size: 0.85rem; }
+  .snap-volume { font-size: 0.72rem; }
+  .snap-diff { font-size: 0.72rem; padding: 1px 4px; }
+
+  /* ランクバッジを少し小さく */
+  .rank-badge {
+    width: 24px;
+    height: 24px;
+    font-size: 0.78rem;
+  }
+
+  .pump-icon {
+    font-size: 0.85rem;
+  }
+}
+
+/* ── 狭いスマホ(Fold 7カバー、通常スマホ縦) ── */
 @media (max-width: 600px) {
   html {
     font-size: 12px;
@@ -624,26 +699,12 @@ body {
     font-size: 0.65rem;
   }
 
-  .volume-table tbody td,
-  .volume-table thead th {
-    padding: 4px 6px;
-  }
-
-  /* タブ: ショートラベル表示 */
-  .tab-label-full {
-    display: none;
-  }
-
-  .tab-label-short {
-    display: inline;
-  }
-
   .tab-btn {
     padding: 8px 10px;
     font-size: 0.8rem;
   }
 
-  /* スマホでは横スクロール無しで全6スナップ列が収まるよう、超コンパクト化 */
+  /* 全6スナップ列を横スクロール無しで収めるための超コンパクト化 */
   .table-wrapper {
     overflow-x: hidden;
     padding: 0 6px 40px;
@@ -672,7 +733,7 @@ body {
     padding: 5px 3px !important;
   }
 
-  /* 銘柄セル */
+  /* 銘柄セル: /USDT 省略 */
   .symbol-cell {
     flex-wrap: wrap;
     gap: 2px;
@@ -680,14 +741,11 @@ body {
   .symbol-base { font-size: 0.78rem; }
   .symbol-quote { display: none; }
 
-  /* 24h出来高セル */
   .volume-cell { font-size: 0.78rem; }
 
   /* スナップセル: 順位+小バッジのみ、出来高は非表示 */
   .snap-volume { display: none; }
-  .snap-rank {
-    font-size: 0.78rem;
-  }
+  .snap-rank { font-size: 0.78rem; }
   .snap-diff {
     font-size: 0.6rem;
     padding: 0 3px;
@@ -707,7 +765,7 @@ body {
     text-align: center;
   }
 
-  /* ランクバッジを小さく */
+  /* ランクバッジを更に小さく */
   .rank-badge {
     width: 18px;
     height: 18px;
@@ -715,7 +773,6 @@ body {
     border-radius: 4px;
   }
 
-  /* PUMPアイコンを小さく */
   .pump-icon {
     font-size: 0.75rem;
     margin-right: 2px;
