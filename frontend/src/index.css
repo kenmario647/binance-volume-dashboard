@@ -294,13 +294,12 @@ body {
   border-collapse: collapse;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
+  /* sticky thead を成立させるため overflow:hidden + border-radius は外している */
 }
 
 .volume-table thead {
-  /* sticky にしたいが .volume-table の overflow:hidden により座標系が狂うため
-     現状はsticky解除し、列ヘッダーは行と一緒にスクロールさせる */
+  position: sticky;
+  top: 116px; /* ページheader(~70) + tabs(~46) の下に固定 */
   z-index: 10;
 }
 
@@ -624,9 +623,12 @@ body {
     font-size: 0.7rem;
   }
 
-  /* Sticky position: タブをページヘッダー(~42)直下に */
+  /* Sticky position: タブをページヘッダー(~42)直下、theadはタブの下に */
   .tabs-nav {
     top: 42px;
+  }
+  .volume-table thead {
+    top: 76px;
   }
 
   /* タブ: ショートラベル表示 */
@@ -786,6 +788,11 @@ body {
   .tabs-nav {
     top: auto;
     position: relative;
+  }
+
+  /* タブが非sticky になるので thead はヘッダー(~52)の下だけでよい */
+  .volume-table thead {
+    top: 56px;
   }
 }
 
