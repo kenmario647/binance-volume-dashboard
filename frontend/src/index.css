@@ -603,17 +603,30 @@ body {
 
 @media (max-width: 600px) {
   html {
-    font-size: 15px;
+    font-size: 12px;
+  }
+
+  .header {
+    padding: 8px 12px;
   }
 
   .header-content {
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
+  }
+
+  .logo {
+    font-size: 1.3rem;
+  }
+
+  .badge {
+    padding: 2px 7px;
+    font-size: 0.65rem;
   }
 
   .volume-table tbody td,
   .volume-table thead th {
-    padding: 6px 8px;
+    padding: 4px 6px;
   }
 
   /* タブ: ショートラベル表示 */
@@ -626,8 +639,8 @@ body {
   }
 
   .tab-btn {
-    padding: 10px 14px;
-    font-size: 0.9rem;
+    padding: 8px 10px;
+    font-size: 0.8rem;
   }
 
   /* スマホでは横スクロール無しで全6スナップ列が収まるよう、超コンパクト化 */
@@ -696,14 +709,15 @@ body {
 
   /* ランクバッジを小さく */
   .rank-badge {
-    width: 22px;
-    height: 22px;
-    font-size: 0.7rem;
+    width: 18px;
+    height: 18px;
+    font-size: 0.65rem;
+    border-radius: 4px;
   }
 
   /* PUMPアイコンを小さく */
   .pump-icon {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     margin-right: 2px;
   }
 
