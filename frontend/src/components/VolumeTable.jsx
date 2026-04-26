@@ -1,10 +1,25 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatVolume, formatPrice, formatPercent, parseSymbol } from '../utils';
 
 const PUMP_THRESHOLD = 10;
+const MOBILE_SNAPSHOT_LIMIT = 6;
 
 function VolumeTable({ data, snapshots = [] }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
+
+    // スマホ・Fold 7展開時(<=900px)では表示するスナップショットを最新の MOBILE_SNAPSHOT_LIMIT 件に絞る
+    const [isMobile, setIsMobile] = useState(
+        typeof window !== 'undefined' ? window.matchMedia('(max-width: 900px)').matches : false
+    );
+    useEffect(() => {
+        const mq = window.matchMedia('(max-width: 900px)');
+        const update = () => setIsMobile(mq.matches);
+        update();
+        mq.addEventListener('change', update);
+        return () => mq.removeEventListener('change', update);
+    }, []);
+
+    const displaySnapshots = isMobile ? snapshots.slice(-MOBILE_SNAPSHOT_LIMIT) : snapshots;
 
     // PUMP判定: 30分前スナップ → 現在(最新スナップ)の順位上昇のみで評価
     // 前回スナップに無い = 圏外(>100位)からのエントリ扱い
@@ -63,10 +78,11 @@ function VolumeTable({ data, snapshots = [] }) {
         { key: 'quoteVolume', label: '24h出来高' },
     ];
 
-    // スナップショット列（最大6つ、時系列の古い順）
-    const snapshotColumns = snapshots.map((snap, idx) => ({
+    // スナップショット列（時系列の古い順）。モバイルでは最新N件のみ表示
+    const isShowingFromStart = displaySnapshots.length === snapshots.length;
+    const snapshotColumns = displaySnapshots.map((snap, idx) => ({
         key: `snap_${idx}`,
-        label: idx === 0 && snapshots.length > 0 ? `${snap.time} (起動)` : snap.time,
+        label: idx === 0 && isShowingFromStart ? `${snap.time} (起動)` : snap.time,
         snapshot: snap,
     }));
 

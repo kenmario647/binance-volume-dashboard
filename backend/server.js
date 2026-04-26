@@ -51,7 +51,7 @@ function getJSTTimeLabel() {
 // 取引所APIは起動時と30分刻み(XX:00, XX:30)のみ叩く。それ以外はメモリのデータを返す
 // ════════════════════════════════════════════════════
 
-const MAX_SNAPSHOTS = 6;
+const MAX_SNAPSHOTS = 11;
 
 // { 'binance-futures': { current: { data: [...], timestamp }, snapshots: [ { time, rankings } ] } }
 const store = {};
