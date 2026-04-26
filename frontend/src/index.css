@@ -630,48 +630,81 @@ body {
     font-size: 0.9rem;
   }
 
-  /* スマホでは横スクロール無しで収まるよう、最新スナップ列だけ表示し古い列は隠す */
+  /* スマホでは横スクロール無しで全6スナップ列が収まるよう、超コンパクト化 */
   .table-wrapper {
     overflow-x: hidden;
+    padding: 0 6px 40px;
   }
 
   .volume-table {
     width: 100%;
     table-layout: fixed;
+    border-radius: 8px;
   }
 
-  /* 固定3列(#, 銘柄, 24h出来高)+ 最新スナップ1列のみ表示。5列目以降(=古いスナップ)を隠す */
-  .volume-table thead th:nth-child(n+5),
-  .volume-table tbody td:nth-child(n+5) {
-    display: none;
-  }
-
-  /* 残った最新スナップ列の幅を抑える */
+  /* 列幅配分: # 7%, 銘柄 23%, 24H 12%, 6 snaps × 9.7% ≒ 58% */
+  .volume-table thead th:first-child { width: 7%; }
+  .volume-table thead th:nth-child(2) { width: 23%; }
+  .volume-table thead th:nth-child(3) { width: 12%; }
   .snapshot-header {
     min-width: 0 !important;
-    width: 26%;
+    width: 9.7%;
+    font-size: 0.62rem !important;
+    padding: 6px 2px !important;
   }
 
-  .volume-table thead th:first-child {
-    width: 12%;
+  /* 全セルの余白を最小化 */
+  .volume-table tbody td,
+  .volume-table thead th {
+    padding: 5px 3px !important;
   }
 
-  .volume-table thead th:nth-child(2) {
-    width: 36%;
+  /* 銘柄セル */
+  .symbol-cell {
+    flex-wrap: wrap;
+    gap: 2px;
   }
+  .symbol-base { font-size: 0.78rem; }
+  .symbol-quote { display: none; }
 
-  .volume-table thead th:nth-child(3) {
-    width: 26%;
+  /* 24h出来高セル */
+  .volume-cell { font-size: 0.78rem; }
+
+  /* スナップセル: 順位+小バッジのみ、出来高は非表示 */
+  .snap-volume { display: none; }
+  .snap-rank {
+    font-size: 0.78rem;
   }
-
-  /* セル内の余白も詰める */
-  .snapshot-td,
-  .volume-table tbody td:nth-child(3) {
-    padding: 8px 6px !important;
+  .snap-diff {
+    font-size: 0.6rem;
+    padding: 0 3px;
+    font-weight: 700;
   }
-
   .snap-content {
-    gap: 4px;
+    gap: 2px;
+    flex-direction: column;
+    align-items: center;
+  }
+  .snap-stack {
+    gap: 0;
+    align-items: center;
+  }
+  .snapshot-td {
+    padding: 4px 2px !important;
+    text-align: center;
+  }
+
+  /* ランクバッジを小さく */
+  .rank-badge {
+    width: 22px;
+    height: 22px;
+    font-size: 0.7rem;
+  }
+
+  /* PUMPアイコンを小さく */
+  .pump-icon {
+    font-size: 0.85rem;
+    margin-right: 2px;
   }
 
   .tabs-nav {
