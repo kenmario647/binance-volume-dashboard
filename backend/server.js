@@ -284,26 +284,25 @@ async function fetchBinanceAlpha() {
   try {
     const alphaTokens = await fetchAlphaTokenList();
     if (!alphaTokens.length) throw new Error('Alphaトークンリストが取得できません');
-    const alphaSymbolSet = new Set(
-      alphaTokens.map(t => (t.symbol || '').toUpperCase() + 'USDT')
-    );
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const tickerResponse = await fetchWithRetry(binanceApi, '/fapi/v1/ticker/24hr');
-    const sorted = tickerResponse.data
-      .filter(t => alphaSymbolSet.has(t.symbol))
+
+    // Alphaトークンリスト自身に volume24h / price / percentChange24h が入っているのでそれを直接使う
+    // (以前は Binance先物 /fapi/v1/ticker/24hr とクロス参照していたため Binance先物と同じ出来高になっていた)
+    const sorted = alphaTokens
+      .filter(t => !t.offline && t.volume24h && parseFloat(t.volume24h) > 0)
       .map(t => ({
-        symbol: t.symbol,
-        lastPrice: parseFloat(t.lastPrice),
-        priceChangePercent: parseFloat(t.priceChangePercent),
-        quoteVolume: parseFloat(t.quoteVolume),
+        symbol: (t.symbol || '').toUpperCase() + 'USDT',
+        displayName: (t.symbol || '').toUpperCase(),
+        lastPrice: parseFloat(t.price || 0),
+        priceChangePercent: parseFloat(t.percentChange24h || 0),
+        quoteVolume: parseFloat(t.volume24h || 0),
       }))
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, 100);
 
     saveExchangeData('binance-alpha', sorted);
-    console.log(`✅ [Alpha先物] ${sorted.length}銘柄取得`);
+    console.log(`✅ [Alpha] ${sorted.length}銘柄取得 (Alpha専用出来高)`);
   } catch (error) {
-    console.error(`[Alpha先物] エラー: ${error.message} (code=${error.code || 'N/A'}, status=${error.response?.status || 'N/A'})`);
+    console.error(`[Alpha] エラー: ${error.message} (code=${error.code || 'N/A'}, status=${error.response?.status || 'N/A'})`);
     saveSnapshotFallback('binance-alpha');
   }
 }
