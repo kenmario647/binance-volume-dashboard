@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
+const persist = require('./persist');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -56,10 +57,11 @@ const MAX_SNAPSHOTS = 11;
 // { 'binance-futures': { current: { data: [...], timestamp }, snapshots: [ { time, rankings } ] } }
 const store = {};
 
-function saveExchangeData(exchangeId, data) {
+function saveExchangeData(exchangeId, data, fullData) {
   if (!data?.length) return;
 
   const timeLabel = getJSTTimeLabel();
+  const now = Date.now();
   const rankings = {};
   data.forEach((item, index) => {
     rankings[item.symbol] = { rank: index + 1, volume: item.quoteVolume };
@@ -68,15 +70,19 @@ function saveExchangeData(exchangeId, data) {
   if (!store[exchangeId]) store[exchangeId] = { current: null, snapshots: [] };
 
   // 最新データを保存
-  store[exchangeId].current = { data, timestamp: Date.now() };
+  store[exchangeId].current = { data, timestamp: now };
 
   // スナップショットを追加
-  store[exchangeId].snapshots.push({ time: timeLabel, timestamp: Date.now(), rankings });
+  store[exchangeId].snapshots.push({ time: timeLabel, timestamp: now, rankings });
   while (store[exchangeId].snapshots.length > MAX_SNAPSHOTS) {
     store[exchangeId].snapshots.shift();
   }
 
   console.log(`📸 [${exchangeId}] データ保存: ${timeLabel} (スナップショット ${store[exchangeId].snapshots.length}件)`);
+
+  // 永続化（全銘柄があればそれを、無ければTOP100を保存）。失敗してもメモリ上のデータは生きる
+  persist.saveSnapshot({ exchangeId, timestamp: now, timeLabel, rows: fullData || data, source: 'live' })
+    .catch(err => console.error(`❌ 永続化エラー [${exchangeId}]:`, err.message));
 }
 
 // API失敗時に前回データでスナップショットだけ保存する
@@ -90,12 +96,15 @@ function saveSnapshotFallback(exchangeId) {
     rankings[item.symbol] = { rank: index + 1, volume: item.quoteVolume };
   });
 
-  s.snapshots.push({ time: timeLabel, timestamp: Date.now(), rankings });
+  const now = Date.now();
+  s.snapshots.push({ time: timeLabel, timestamp: now, rankings });
   while (s.snapshots.length > MAX_SNAPSHOTS) {
     s.snapshots.shift();
   }
 
   console.log(`⚠️ [${exchangeId}] フォールバック: 前回データでスナップショット保存 ${timeLabel} (計${s.snapshots.length}件)`);
+  persist.saveSnapshot({ exchangeId, timestamp: now, timeLabel, rows: s.current.data, source: 'fallback' })
+    .catch(err => console.error(`❌ 永続化エラー [${exchangeId}]:`, err.message));
   return true;
 }
 
@@ -140,7 +149,7 @@ async function fetchBinanceFutures() {
     const tradingSymbols = await fetchBinanceActiveSymbols();
     await new Promise(resolve => setTimeout(resolve, 500));
     const tickerResponse = await fetchWithRetry(binanceApi, '/fapi/v1/ticker/24hr');
-    const sorted = tickerResponse.data
+    const sortedAll = tickerResponse.data
       .filter(t => {
         if (!t.symbol.endsWith('USDT')) return false;
         return tradingSymbols ? tradingSymbols.has(t.symbol) : true;
@@ -151,10 +160,10 @@ async function fetchBinanceFutures() {
         priceChangePercent: parseFloat(t.priceChangePercent),
         quoteVolume: parseFloat(t.quoteVolume),
       }))
-      .sort((a, b) => b.quoteVolume - a.quoteVolume)
-      .slice(0, 100);
+      .sort((a, b) => b.quoteVolume - a.quoteVolume);
+    const sorted = sortedAll.slice(0, 100);
 
-    saveExchangeData('binance-futures', sorted);
+    saveExchangeData('binance-futures', sorted, sortedAll);
     console.log(`✅ [Binance先物] ${sorted.length}銘柄取得`);
   } catch (error) {
     console.error(`[Binance先物] エラー: ${error.message} (code=${error.code || 'N/A'}, status=${error.response?.status || 'N/A'})`);
@@ -384,7 +393,76 @@ app.get('/api/health', (req, res) => {
       ? new Date(store[id].current.timestamp).toISOString()
       : null,
   }));
-  res.json({ status: 'ok', uptime: process.uptime(), exchanges });
+  res.json({ status: 'ok', uptime: process.uptime(), exchanges, persistence: persist.getStatus() });
+});
+
+// ════════════════════════════════════════════════════
+// 履歴API（永続化したスナップショットを返す）
+// ════════════════════════════════════════════════════
+
+const EXCHANGE_IDS = new Set(['binance-futures', 'bitget-spot', 'upbit-spot', 'binance-alpha']);
+
+function parseTs(v, fallback) {
+  if (v == null || v === '') return fallback;
+  const n = Number(v);
+  if (Number.isFinite(n)) return n < 1e12 ? n * 1000 : n; // 秒でもミリ秒でも受ける
+  const d = Date.parse(v);
+  return Number.isFinite(d) ? d : fallback;
+}
+
+function historyHandler(fn) {
+  return async (req, res) => {
+    if (!EXCHANGE_IDS.has(req.params.exchange)) {
+      return res.status(404).json({ error: `unknown exchange: ${req.params.exchange}` });
+    }
+    if (!persist.getStatus().ready) {
+      return res.status(503).json({ error: '永続化が有効ではありません', persistence: persist.getStatus() });
+    }
+    try {
+      res.json(await fn(req));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+}
+
+// 銘柄の順位・出来高の時系列  例: /api/history/binance-futures/symbol/BTCUSDT?days=7
+app.get('/api/history/:exchange/symbol/:symbol', historyHandler(async (req) => {
+  const days = Math.min(Math.max(Number(req.query.days) || 7, 0.01), 400);
+  const toTs = parseTs(req.query.to, Date.now());
+  const fromTs = parseTs(req.query.from, toTs - days * 86400000);
+  const limit = Math.min(Number(req.query.limit) || 2000, 20000);
+  const symbol = req.params.symbol.toUpperCase();
+  const points = await persist.getSymbolHistory(req.params.exchange, symbol, { fromTs, toTs, limit });
+  return { exchange: req.params.exchange, symbol, from: fromTs, to: toTs, count: points.length, points };
+}));
+
+// スナップショット一覧  例: /api/history/binance-futures/snapshots?days=2
+app.get('/api/history/:exchange/snapshots', historyHandler(async (req) => {
+  const days = Math.min(Math.max(Number(req.query.days) || 2, 0.01), 400);
+  const toTs = parseTs(req.query.to, Date.now());
+  const fromTs = parseTs(req.query.from, toTs - days * 86400000);
+  const limit = Math.min(Number(req.query.limit) || 500, 5000);
+  const snapshots = await persist.listSnapshots(req.params.exchange, { fromTs, toTs, limit });
+  return { exchange: req.params.exchange, from: fromTs, to: toTs, count: snapshots.length, snapshots };
+}));
+
+// 指定時刻時点の順位表  例: /api/history/binance-futures/at?ts=2026-10-01T00:00:00Z&top=100
+app.get('/api/history/:exchange/at', historyHandler(async (req) => {
+  const ts = parseTs(req.query.ts, Date.now());
+  const top = Math.min(Number(req.query.top) || 100, 1000);
+  const snapshot = await persist.getSnapshotAt(req.params.exchange, ts, { top });
+  if (!snapshot) return { exchange: req.params.exchange, ts, snapshot: null };
+  return { exchange: req.params.exchange, requestedTs: ts, ...snapshot };
+}));
+
+// 保存状況のサマリ
+app.get('/api/history/stats', async (req, res) => {
+  try {
+    res.json({ persistence: persist.getStatus(), exchanges: await persist.getStats() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── 本番環境: フロントエンド配信 ──
@@ -399,6 +477,7 @@ if (process.env.NODE_ENV === 'production') {
 // ── サーバー起動 ──
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`✅ サーバー起動: http://localhost:${PORT}`);
+  await persist.init();
   console.log('📸 起動時データ取得中...');
   await fetchAllExchanges();
   scheduleNextHalfHourlyFetch();

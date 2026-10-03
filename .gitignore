@@ -3,3 +3,6 @@ dist/
 .DS_Store
 .env
 *.log
+
+# 永続化のローカルSQLite(本番はTurso)
+backend/data/
