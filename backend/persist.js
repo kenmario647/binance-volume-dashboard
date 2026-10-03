@@ -10,9 +10,18 @@ const path = require('path');
 const { createClient } = require('@libsql/client');
 
 const DEFAULT_URL = 'file:' + path.join(__dirname, 'data', 'volume.db');
-// 環境変数は前後の空白・改行を除く（ダッシュボードに貼った値に改行が混ざるとヘッダが不正になる）
-const url = (process.env.PERSIST_URL || DEFAULT_URL).trim();
-const authToken = (process.env.PERSIST_AUTH_TOKEN || '').trim() || undefined;
+// 環境変数から空白・改行・不可視文字を除く。
+// ダッシュボードに貼った値に途中改行やゼロ幅文字が混ざるとヘッダが不正になり(Headers.set エラー)接続できない。
+// URL とトークン(JWT)は印字可能ASCIIだけで構成されるので、それ以外を全部落としても安全。
+const clean = v => String(v || '').replace(/[^\x21-\x7E]/g, '');
+const url = clean(process.env.PERSIST_URL) || DEFAULT_URL;
+const authToken = clean(process.env.PERSIST_AUTH_TOKEN) || undefined;
+if (process.env.PERSIST_AUTH_TOKEN && authToken !== process.env.PERSIST_AUTH_TOKEN) {
+  console.warn(`⚠️ PERSIST_AUTH_TOKEN に空白・改行・不可視文字が含まれていたため除去しました (${process.env.PERSIST_AUTH_TOKEN.length}→${authToken.length}文字)`);
+}
+if (authToken && !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(authToken)) {
+  console.warn('⚠️ PERSIST_AUTH_TOKEN が JWT の形(xxx.yyy.zzz)ではありません。Turso のトークンを貼り直してください');
+}
 
 // エラー文にトークンが含まれても外に出さない（/api/health で状態を公開しているため）
 function redact(msg) {
