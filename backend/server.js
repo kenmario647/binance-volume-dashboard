@@ -421,7 +421,7 @@ function historyHandler(fn) {
     try {
       res.json(await fn(req));
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: persist.redact(err.message) });
     }
   };
 }
@@ -461,7 +461,7 @@ app.get('/api/history/stats', async (req, res) => {
   try {
     res.json({ persistence: persist.getStatus(), exchanges: await persist.getStats() });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: persist.redact(err.message) });
   }
 });
 

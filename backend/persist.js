@@ -10,8 +10,18 @@ const path = require('path');
 const { createClient } = require('@libsql/client');
 
 const DEFAULT_URL = 'file:' + path.join(__dirname, 'data', 'volume.db');
-const url = process.env.PERSIST_URL || DEFAULT_URL;
-const authToken = process.env.PERSIST_AUTH_TOKEN || undefined;
+// 環境変数は前後の空白・改行を除く（ダッシュボードに貼った値に改行が混ざるとヘッダが不正になる）
+const url = (process.env.PERSIST_URL || DEFAULT_URL).trim();
+const authToken = (process.env.PERSIST_AUTH_TOKEN || '').trim() || undefined;
+
+// エラー文にトークンが含まれても外に出さない（/api/health で状態を公開しているため）
+function redact(msg) {
+  let text = String(msg || '');
+  for (const secret of [authToken, process.env.PERSIST_AUTH_TOKEN]) {
+    if (secret && secret.length > 8) text = text.split(secret).join('***');
+  }
+  return text.replace(/Bearer\s+\S+/g, 'Bearer ***').slice(0, 300);
+}
 const disabled = process.env.PERSIST_DISABLED === '1';
 
 const status = {
@@ -69,8 +79,8 @@ async function init() {
     return true;
   } catch (err) {
     status.ready = false;
-    status.lastError = `${new Date().toISOString()} init: ${err.message}`;
-    console.error('❌ 永続化の初期化に失敗:', err.message);
+    status.lastError = `${new Date().toISOString()} init: ${redact(err.message)}`;
+    console.error('❌ 永続化の初期化に失敗:', redact(err.message));
     return false;
   }
 }
@@ -104,8 +114,8 @@ async function saveSnapshot({ exchangeId, timestamp, timeLabel, rows, source = '
     status.lastError = null;
     return snapshotId;
   } catch (err) {
-    status.lastError = `${new Date().toISOString()} save(${exchangeId}): ${err.message}`;
-    console.error(`❌ 永続化に失敗 [${exchangeId}]:`, err.message);
+    status.lastError = `${new Date().toISOString()} save(${exchangeId}): ${redact(err.message)}`;
+    console.error(`❌ 永続化に失敗 [${exchangeId}]:`, redact(err.message));
     return null;
   }
 }
@@ -178,4 +188,4 @@ function getStatus() {
   return { ...status };
 }
 
-module.exports = { init, saveSnapshot, getSymbolHistory, listSnapshots, getSnapshotAt, getStats, getStatus };
+module.exports = { init, saveSnapshot, getSymbolHistory, listSnapshots, getSnapshotAt, getStats, getStatus, redact };
