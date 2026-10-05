@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import VolumeTable from './components/VolumeTable';
+import MomentumView from './components/MomentumView';
 import { useExchangeData, TABS } from './utils';
 import './index.css';
 
@@ -40,10 +41,11 @@ function App() {
 
   // タブ切り替え時・初回ロード（取引所APIは叩かない。サーバーのメモリデータを取得するだけ）
   useEffect(() => {
+    if (currentTab?.view) return; // 独自の表示(急上昇)は自分でデータを取る
     if (!dataMap[activeTab]) {
       fetchData(activeTab);
     }
-  }, [activeTab, fetchData]);
+  }, [activeTab, fetchData, currentTab]);
 
   const handleRefresh = useCallback(async () => {
     await fetchData(activeTab);
@@ -88,8 +90,10 @@ function App() {
         </div>
       </nav>
 
+      {currentTab?.view === 'momentum' && <MomentumView />}
+
       {/* エラー状態 */}
-      {error && !data && (
+      {!currentTab?.view && error && !data && (
         <div className="error-container">
           <div className="error-icon">⚠️</div>
           <div className="error-text">データ取得エラー</div>
@@ -99,7 +103,7 @@ function App() {
       )}
 
       {/* テーブル */}
-      {loading && !data ? (
+      {currentTab?.view ? null : loading && !data ? (
         <div className="loading-container">
           <div className="loading-spinner" />
           <div className="loading-text">{currentTab?.description}データを取得中...</div>

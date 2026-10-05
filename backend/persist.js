@@ -66,6 +66,21 @@ const SCHEMA = [
      PRIMARY KEY (snapshot_id, symbol)
    ) WITHOUT ROWID`,
   `CREATE INDEX IF NOT EXISTS ix_ranks_symbol ON ranks(symbol, snapshot_id)`,
+  `CREATE TABLE IF NOT EXISTS momentum_alerts (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     ts INTEGER NOT NULL,
+     symbol TEXT NOT NULL,
+     pct15 REAL NOT NULL,
+     pct60 REAL,
+     price REAL NOT NULL,
+     change24h REAL,
+     quote_volume REAL,
+     rank INTEGER,
+     threshold_pct REAL,
+     max_price REAL,
+     notified TEXT
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_momentum_alerts_ts ON momentum_alerts(ts)`,
 ];
 
 async function init() {
@@ -193,8 +208,54 @@ async function getStats() {
     first: new Date(Number(r.first_ts)).toISOString(), last: new Date(Number(r.last_ts)).toISOString() }));
 }
 
+// ── 急上昇通知の記録 ──
+
+async function saveMomentumAlert(a) {
+  if (!status.ready) return null;
+  try {
+    const res = await client.execute({
+      sql: `INSERT INTO momentum_alerts (ts, symbol, pct15, pct60, price, change24h, quote_volume, rank, threshold_pct, max_price, notified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [a.ts, a.symbol, a.pct15, numOrNull(a.pct60), a.price, numOrNull(a.change24h), numOrNull(a.quoteVolume),
+        a.rank ?? null, numOrNull(a.thresholdPct), numOrNull(a.maxPrice), a.notified || null],
+    });
+    return Number(res.lastInsertRowid);
+  } catch (err) {
+    status.lastError = `${new Date().toISOString()} momentum: ${redact(err.message)}`;
+    console.error('❌ 急上昇通知の記録に失敗:', redact(err.message));
+    return null;
+  }
+}
+
+async function updateMomentumAlertMax(id, maxPrice) {
+  if (!status.ready || id == null) return;
+  try {
+    await client.execute({ sql: `UPDATE momentum_alerts SET max_price = ? WHERE id = ?`, args: [maxPrice, id] });
+  } catch (err) {
+    console.error('❌ 急上昇通知の更新に失敗:', redact(err.message));
+  }
+}
+
+async function listMomentumAlerts({ fromTs = 0, limit = 500 } = {}) {
+  if (!status.ready) return [];
+  const res = await client.execute({
+    sql: `SELECT id, ts, symbol, pct15, pct60, price, change24h, quote_volume, rank, threshold_pct, max_price, notified
+            FROM momentum_alerts WHERE ts >= ? ORDER BY ts DESC LIMIT ?`,
+    args: [fromTs, limit],
+  });
+  const n = v => (v == null ? null : Number(v));
+  return res.rows.map(r => ({
+    id: Number(r.id), ts: Number(r.ts), symbol: r.symbol, pct15: Number(r.pct15), pct60: n(r.pct60),
+    price: Number(r.price), change24h: n(r.change24h), quoteVolume: n(r.quote_volume), rank: n(r.rank),
+    thresholdPct: n(r.threshold_pct), maxPrice: n(r.max_price), notified: r.notified,
+  }));
+}
+
 function getStatus() {
   return { ...status };
 }
 
-module.exports = { init, saveSnapshot, getSymbolHistory, listSnapshots, getSnapshotAt, getStats, getStatus, redact };
+module.exports = {
+  init, saveSnapshot, getSymbolHistory, listSnapshots, getSnapshotAt, getStats, getStatus, redact,
+  saveMomentumAlert, updateMomentumAlertMax, listMomentumAlerts,
+};

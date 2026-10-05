@@ -100,10 +100,20 @@ export const TABS = [
         description: 'Binance Alpha 先物',
         badgeText: 'ALPHA',
     },
+    {
+        id: 'momentum',
+        label: '急上昇',
+        shortLabel: '急上昇',
+        view: 'momentum',
+        icon: '🚀',
+        color: '#ef4444',
+        description: '15分の上昇率',
+        badgeText: '15分',
+    },
 ];
 
 // ── データ取得カスタムフック ──
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+export const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 export function useExchangeData() {
     const [dataMap, setDataMap] = useState({});

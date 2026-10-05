@@ -128,6 +128,8 @@ const binanceApi = axios.create({
   headers: DEFAULT_HEADERS,
 });
 
+const momentum = require('./momentum').createMomentum({ api: binanceApi, persist });
+
 let activeSymbolsSet = null;
 
 async function fetchBinanceActiveSymbols() {
@@ -393,7 +395,7 @@ app.get('/api/health', (req, res) => {
       ? new Date(store[id].current.timestamp).toISOString()
       : null,
   }));
-  res.json({ status: 'ok', uptime: process.uptime(), exchanges, persistence: persist.getStatus() });
+  res.json({ status: 'ok', uptime: process.uptime(), exchanges, persistence: persist.getStatus(), momentum: momentum.getStatus() });
 });
 
 // ════════════════════════════════════════════════════
@@ -465,6 +467,25 @@ app.get('/api/history/stats', async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════
+// 急上昇（15分の上昇率）
+// ════════════════════════════════════════════════════
+
+app.get('/api/momentum', (req, res) => {
+  res.json(momentum.getView());
+});
+
+// 通知の履歴  例: /api/momentum/alerts?days=7
+app.get('/api/momentum/alerts', async (req, res) => {
+  const days = Math.min(Math.max(Number(req.query.days) || 7, 0.01), 400);
+  try {
+    const alerts = await momentum.getAlertHistory(Date.now() - days * 86400000);
+    res.json({ days, count: alerts.length, alerts });
+  } catch (err) {
+    res.status(500).json({ error: persist.redact(err.message) });
+  }
+});
+
 // ── 本番環境: フロントエンド配信 ──
 if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '..', 'frontend', 'dist');
@@ -481,4 +502,5 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log('📸 起動時データ取得中...');
   await fetchAllExchanges();
   scheduleNextHalfHourlyFetch();
+  momentum.start().catch(err => console.error('❌ [急上昇] 起動に失敗:', err.message));
 });
