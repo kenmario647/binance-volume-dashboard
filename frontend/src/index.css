@@ -166,7 +166,7 @@ body {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   position: sticky;
-  top: 70px; /* desktop header の高さに合わせる */
+  top: var(--header-h, 70px); /* ヘッダーの実際の高さ(App.jsx で計測) */
   z-index: 99;
 }
 
@@ -299,7 +299,7 @@ body {
 
 .volume-table thead {
   position: sticky;
-  top: 116px; /* ページheader(~70) + tabs(~46) の下に固定 */
+  top: var(--thead-top, 116px); /* ヘッダー + タブ帯の実際の高さ(App.jsx で計測) */
   z-index: 10;
 }
 
@@ -623,14 +623,6 @@ body {
     font-size: 0.7rem;
   }
 
-  /* Sticky position: タブをページヘッダー(~42)直下、theadはタブの下に */
-  .tabs-nav {
-    top: 42px;
-  }
-  .volume-table thead {
-    top: 76px;
-  }
-
   /* タブ: ショートラベル表示 */
   .tab-label-full {
     display: none;
@@ -712,8 +704,9 @@ body {
   }
 
   /* 全6スナップ列を横スクロール無しで収めるための超コンパクト化 */
+  /* hidden だと外枠がスクロール領域になり見出しの sticky が外枠基準になる。clip ははみ出しを隠すだけ */
   .table-wrapper {
-    overflow-x: hidden;
+    overflow-x: clip;
     padding: 0 6px 40px;
   }
 
@@ -790,10 +783,6 @@ body {
     position: relative;
   }
 
-  /* タブが非sticky になるので thead はヘッダー(~52)の下だけでよい */
-  .volume-table thead {
-    top: 56px;
-  }
 }
 
 @media (max-width: 480px) {

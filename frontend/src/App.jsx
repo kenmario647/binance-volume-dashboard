@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import VolumeTable from './components/VolumeTable';
 import { useExchangeData, TABS } from './utils';
 import './index.css';
@@ -7,7 +7,32 @@ function App() {
   const [activeTab, setActiveTab] = useState(TABS[0].id);
   const { dataMap, loadingMap, errorMap, lastUpdateMap, fetchData } = useExchangeData();
 
+  const headerRef = useRef(null);
+  const navRef = useRef(null);
   const currentTab = TABS.find(t => t.id === activeTab);
+
+  // 表の見出しを固定する位置を、ヘッダーとタブ帯の実際の高さから決める(端末やフォントで高さが変わるため)
+  useEffect(() => {
+    const header = headerRef.current;
+    const nav = navRef.current;
+    if (!header || !nav) return undefined;
+    const update = () => {
+      const h = header.getBoundingClientRect().height;
+      const navSticky = getComputedStyle(nav).position === 'sticky';
+      const root = document.documentElement.style;
+      root.setProperty('--header-h', `${h}px`);
+      root.setProperty('--thead-top', `${navSticky ? h + nav.getBoundingClientRect().height : h}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(header);
+    ro.observe(nav);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
   const data = dataMap[activeTab];
   const loading = loadingMap[activeTab];
   const error = errorMap[activeTab];
@@ -31,7 +56,7 @@ function App() {
   return (
     <>
       {/* ヘッダー */}
-      <header className="header">
+      <header className="header" ref={headerRef}>
         <div className="header-content">
           <div className="header-left">
             <div className="logo">
@@ -46,7 +71,7 @@ function App() {
       </header>
 
       {/* タブ */}
-      <nav className="tabs-nav">
+      <nav className="tabs-nav" ref={navRef}>
         <div className="tabs-container">
           {TABS.map(tab => (
             <button
