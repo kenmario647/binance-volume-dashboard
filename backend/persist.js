@@ -236,6 +236,15 @@ async function updateMomentumAlertMax(id, maxPrice) {
   }
 }
 
+async function updateMomentumAlertNotified(id, notified) {
+  if (!status.ready || id == null) return;
+  try {
+    await client.execute({ sql: `UPDATE momentum_alerts SET notified = ? WHERE id = ?`, args: [notified, id] });
+  } catch (err) {
+    console.error('❌ 急上昇通知の更新に失敗:', redact(err.message));
+  }
+}
+
 async function listMomentumAlerts({ fromTs = 0, limit = 500 } = {}) {
   if (!status.ready) return [];
   const res = await client.execute({
@@ -257,5 +266,5 @@ function getStatus() {
 
 module.exports = {
   init, saveSnapshot, getSymbolHistory, listSnapshots, getSnapshotAt, getStats, getStatus, redact,
-  saveMomentumAlert, updateMomentumAlertMax, listMomentumAlerts,
+  saveMomentumAlert, updateMomentumAlertMax, updateMomentumAlertNotified, listMomentumAlerts,
 };

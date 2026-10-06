@@ -32,12 +32,14 @@ function defaultConfig() {
     stepMin: 5,
     keepMin: 80,
     trackMin: 240,
+    resendMin: 30,
     topN: 30,
     notifyOnStart: process.env.MOMENTUM_NOTIFY_ON_START !== '0',
   };
 }
 
 const pct = (now, before) => (now / before - 1) * 100;
+const hhmm = ts => new Date(ts + 9 * HOUR).toISOString().slice(11, 16);
 const signed = v => (v == null || !Number.isFinite(v) ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`);
 const fmtPrice = p => Number(p).toLocaleString('en-US', { maximumSignificantDigits: 5, useGrouping: false });
 function fmtVol(v) {
@@ -63,7 +65,7 @@ function priceAt(points, targetTs, tolMs = 150000) {
 }
 
 // ── 通知(Bark / ntfy・無料) ──
-function createNotifier({ log = console } = {}) {
+function createNotifier({ log = console, retryDelays = [0, 3000, 10000] } = {}) {
   let barkKey = clean(process.env.BARK_KEY);
   let barkServer = clean(process.env.BARK_SERVER) || 'https://api.day.app';
   // Bark アプリに表示される URL(https://api.day.app/キー/…)をそのまま貼っても使えるようにする
@@ -86,32 +88,48 @@ function createNotifier({ log = console } = {}) {
   const secrets = [bark?.key, ntfy?.topic].filter(s => s && s.length >= 4);
   const redact = msg => secrets.reduce((t, s) => t.split(s).join('***'), String(msg || '')).slice(0, 300);
 
-  function fail(channel, err) {
+  // 接続失敗(IPv4/IPv6の全宛先に繋がらない等)では err.message が空になるため、コードも残す
+  function describe(err) {
+    const parts = [err.code, err.response?.status && `HTTP ${err.response.status}`, err.cause?.code,
+      ...(err.errors || []).map(e => e.code || e.message), err.message];
+    return [...new Set(parts.filter(Boolean))].join(' ') || 'unknown error';
+  }
+
+  function fail(channel, err, attempt) {
     st.errors += 1;
-    st.lastError = `${new Date().toISOString()} ${channel}: ${redact(err.message)}`;
-    log.error(`❌ ${channel} 通知に失敗:`, redact(err.message));
+    st.lastError = `${new Date().toISOString()} ${channel}(${attempt}回目): ${redact(describe(err))}`;
+    log.error(`❌ ${channel} 通知に失敗(${attempt}回目):`, redact(describe(err)));
+  }
+
+  // IPv6 経路で繋がらないことがあるため IPv4 に固定する
+  const net = { timeout: 10000, family: 4 };
+  const RETRY_DELAYS = retryDelays;
+
+  async function attempt(channel, fn) {
+    for (let i = 0; i < RETRY_DELAYS.length; i++) {
+      if (RETRY_DELAYS[i]) await new Promise(r => setTimeout(r, RETRY_DELAYS[i]));
+      try {
+        await fn();
+        return true;
+      } catch (err) {
+        fail(channel, err, i + 1);
+        const status = err.response?.status;
+        if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) return false; // 設定の誤りは待っても直らない
+      }
+    }
+    return false;
   }
 
   async function send({ title, body, url, group = 'pump' }) {
     const ok = [];
-    if (bark) {
-      try {
-        const r = await axios.post(`${bark.server}/push`, { device_key: bark.key, title, body, url, group, level }, { timeout: 10000 });
-        if (r.data?.code !== 200) throw new Error(`code=${r.data?.code} ${r.data?.message || ''}`);
-        ok.push('bark');
-      } catch (err) {
-        fail('Bark', err);
-      }
-    }
-    if (ntfy) {
-      try {
-        const r = await axios.post(ntfy.server, { topic: ntfy.topic, title, message: body, click: url, tags: ['rocket'], priority }, { timeout: 10000 });
-        if (!r.data?.id) throw new Error('応答に id がありません');
-        ok.push('ntfy');
-      } catch (err) {
-        fail('ntfy', err);
-      }
-    }
+    if (bark && await attempt('Bark', async () => {
+      const r = await axios.post(`${bark.server}/push`, { device_key: bark.key, title, body, url, group, level }, net);
+      if (r.data?.code !== 200) throw new Error(`code=${r.data?.code} ${r.data?.message || ''}`);
+    })) ok.push('bark');
+    if (ntfy && await attempt('ntfy', async () => {
+      const r = await axios.post(ntfy.server, { topic: ntfy.topic, title, message: body, click: url, tags: ['rocket'], priority }, net);
+      if (!r.data?.id) throw new Error('応答に id がありません');
+    })) ok.push('ntfy');
     if (ok.length) st.sent += 1;
     return ok;
   }
@@ -129,6 +147,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
   let universe = new Set();
   let universeAt = 0;
   let alerts = []; // 直近24時間(古い順)
+  let pending = []; // 送信に失敗し再送を待っている通知
   let view = { ts: null, items: [], eligible: 0 };
   let timer = null;
   const status = { enabled: !cfg.disabled, ready: false, lastRunAt: null, lastError: null, symbols: 0, backfilledSymbols: 0, alertsSent: 0 };
@@ -241,8 +260,30 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     alerts.push(a);
     a.notified = (await notify.send(message(a))).join(',');
     a.id = (await persist?.saveMomentumAlert?.(a)) ?? null;
+    if (!a.notified && notify.configured) pending.push(a);
     status.alertsSent += 1;
-    log.log(`🚀 [急上昇] ${a.symbol} 15分 ${signed(a.pct15)} 価格 ${fmtPrice(a.price)} 通知先: ${a.notified || 'なし'}`);
+    log.log(`🚀 [急上昇] ${a.symbol} 15分 ${signed(a.pct15)} 価格 ${fmtPrice(a.price)} 通知先: ${a.notified || 'なし(再送待ち)'}`);
+  }
+
+  // 届かなかった通知は検知から30分間、5分ごとに送り直す(遅れても届いた方が役に立つ)
+  async function resendPending(ts) {
+    const keep = [];
+    for (const a of pending) {
+      if (ts - a.ts > cfg.resendMin * MIN) {
+        log.error(`❌ [急上昇] ${a.symbol} の通知は${cfg.resendMin}分間届かなかったため再送を打ち切り`);
+        continue;
+      }
+      const m = message(a);
+      const sent = await notify.send({ ...m, title: `（再送）${m.title}`, body: `${m.body}\n検知 ${hhmm(a.ts)}（現在の価格はリンク先で確認）` });
+      if (sent.length) {
+        a.notified = `${sent.join(',')}(再送)`;
+        persist?.updateMomentumAlertNotified?.(a.id, a.notified);
+        log.log(`🚀 [急上昇] ${a.symbol} の通知を再送しました`);
+      } else {
+        keep.push(a);
+      }
+    }
+    pending = keep;
   }
 
   // 通知後4時間の最高値を追う(「その後どこまで伸びたか」の答え合わせ用)
@@ -272,6 +313,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     const { items, fired } = evaluate(ts);
     view = { ts, items: items.slice(0, cfg.topN), eligible: items.length };
     trackFollowUp(ts);
+    if (pending.length) await resendPending(ts);
     for (const it of fired) await handleAlert(it, ts);
     status.lastRunAt = new Date(ts).toISOString();
     status.ready = true;
@@ -409,7 +451,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
   }
 
   function getStatus() {
-    return { ...status, notify: notify.status() };
+    return { ...status, pendingResend: pending.length, notify: notify.status() };
   }
 
   return {
