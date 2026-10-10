@@ -1,8 +1,12 @@
 // ════════════════════════════════════════════════════
 // 急上昇の監視と通知
-//   5分ごとに Binance先物(暗号資産の無期限)の全銘柄の価格を1回取得し、15分前と比べる。
-//   15分で ALERT_THRESHOLD_PCT 以上上がったら Bark / ntfy に通知する。
-//   判定条件は 95日・528銘柄の検定で決めたもの(+12%・同じ銘柄は4時間止める・直前60分は不成立)。
+//   5分ごとに Binance先物(暗号資産の無期限)の全銘柄の価格を1回取得し、4時間前と比べる。
+//   4時間で ALERT_THRESHOLD_PCT 以上上がり、かつ直近1時間の出来高がその前24時間の1時間平均の
+//   ALERT_VOLUME_RATIO 倍以上になったら Bark / ntfy に通知する。
+//   条件は 95日・525銘柄の検定で決めたもの(+15%・3倍・同じ銘柄は4時間止める・直前60分は不成立)。
+//   旧条件(15分で+12%)と比べ、急に上がる型の捕捉は同程度(36→37%)、じわじわ上がる型(24時間で+40%)は
+//   46→74%に増える。代わりに通知は1日8.4→14.9件、通知後に+10%以上伸びる割合は58→48%に下がる。
+//   ALERT_WINDOW_MIN=15 ALERT_THRESHOLD_PCT=12 ALERT_VOLUME_RATIO=0 で旧条件に戻る。
 // ════════════════════════════════════════════════════
 
 const axios = require('axios');
@@ -23,14 +27,18 @@ function envNum(name, def) {
 function defaultConfig() {
   return {
     disabled: process.env.MOMENTUM_DISABLED === '1',
-    thresholdPct: envNum('ALERT_THRESHOLD_PCT', 12),
+    windowMin: envNum('ALERT_WINDOW_MIN', 240),
+    thresholdPct: envNum('ALERT_THRESHOLD_PCT', 15),
+    // 直近1時間の出来高 ÷ その前24時間の1時間あたり平均。0 で出来高の条件を外す
+    volRatio: envNum('ALERT_VOLUME_RATIO', 3),
+    volRecentMin: 60,
+    volBaseMin: 1440,
     pauseMin: envNum('ALERT_PAUSE_MIN', 240),
     // 直前60分に一度でも条件を満たしていたら鳴らさない(1回の上昇につき1回)
     quietMin: 60,
     minQuoteVolume: envNum('ALERT_MIN_QUOTE_VOLUME', 500000),
-    windowMin: 15,
     stepMin: 5,
-    keepMin: 80,
+    keepMin: 80, // 実際は windowMin より長く保つ(createMomentum で調整)
     trackMin: 240,
     resendMin: 30,
     topN: 30,
@@ -48,6 +56,8 @@ function fmtVol(v) {
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
   return `$${(v / 1e3).toFixed(0)}K`;
 }
+const spanText = min => (min % 60 === 0 ? `${min / 60}時間` : `${min}分`);
+const fmtRatio = v => (v == null || !Number.isFinite(v) ? '-' : `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}倍`);
 
 // targetTs に最も近い価格(±tolMs 以内)。points は [ts, price] の古い順
 function priceAt(points, targetTs, tolMs = 150000) {
@@ -62,6 +72,28 @@ function priceAt(points, targetTs, tolMs = 150000) {
     if (points[i][0] < targetTs - tolMs) break;
   }
   return bestDiff <= tolMs ? best : null;
+}
+
+// 5分足 [[開始時刻, 売買代金], ...] から「直近 recentMin 分の出来高 ÷ その前 baseMin 分の1時間あたり平均」。
+// endTs までに閉じた足だけを使う。足りなければ null
+function volumeRatioAt(bars, endTs, recentMin = 60, baseMin = 1440, stepMin = 5) {
+  const step = stepMin * MIN;
+  let recent = 0;
+  let nRecent = 0;
+  let base = 0;
+  let nBase = 0;
+  for (const [t, q] of bars) {
+    if (t + step > endTs || t < endTs - (recentMin + baseMin) * MIN) continue;
+    if (t >= endTs - recentMin * MIN) {
+      recent += q;
+      nRecent += 1;
+    } else {
+      base += q;
+      nBase += 1;
+    }
+  }
+  if (nRecent < recentMin / stepMin || nBase < HOUR / step || !(base > 0)) return null;
+  return recent / (base / ((nBase * step) / HOUR));
 }
 
 // ── 通知(Bark / ntfy・無料) ──
@@ -137,9 +169,18 @@ function createNotifier({ log = console, retryDelays = [0, 3000, 10000] } = {}) 
   return { send, configured: !!(bark || ntfy), status: () => ({ bark: !!bark, ntfy: !!ntfy, ...st }) };
 }
 
-function createMomentum({ api, persist, notifier, config, log = console } = {}) {
+function createMomentum({ api, persist, notifier, config, log = console, loadBars } = {}) {
   const cfg = { ...defaultConfig(), ...(config || {}) };
+  cfg.keepMin = Math.max(cfg.keepMin, cfg.windowMin + 2 * cfg.stepMin);
   const notify = notifier || createNotifier({ log });
+  // 5分足の売買代金(出来高の倍率を見る銘柄だけ取得する)
+  const bars = loadBars || (async (symbol, limit) => {
+    const { data } = await api.get('/fapi/v1/klines', { params: { symbol, interval: `${cfg.stepMin}m`, limit } });
+    return data.map(k => [Number(k[0]), parseFloat(k[7])]);
+  });
+  const span = spanText(cfg.windowMin);
+  const pauseText = spanText(cfg.pauseMin);
+  const ruleText = `${span}で+${cfg.thresholdPct}%以上` + (cfg.volRatio > 0 ? `・1時間の出来高が普段の${cfg.volRatio}倍以上` : '');
   const prices = new Map(); // symbol -> [[ts, price], ...]
   const meta = new Map(); // symbol -> { quoteVolume, change24h }
   const lastCondTs = new Map();
@@ -150,7 +191,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
   let pending = []; // 送信に失敗し再送を待っている通知
   let view = { ts: null, items: [], eligible: 0 };
   let timer = null;
-  const status = { enabled: !cfg.disabled, ready: false, lastRunAt: null, lastError: null, symbols: 0, backfilledSymbols: 0, alertsSent: 0 };
+  const status = { enabled: !cfg.disabled, ready: false, lastRunAt: null, lastError: null, symbols: 0, backfilledSymbols: 0, alertsSent: 0, volumeErrors: 0 };
 
   function push(symbol, ts, price) {
     if (!(price > 0)) return;
@@ -209,29 +250,61 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     return ts;
   }
 
-  function evaluate(ts) {
+  function rank(ts) {
     const items = [];
     for (const [symbol, pts] of prices) {
       const last = pts[pts.length - 1];
       if (!last || last[0] !== ts) continue;
       const m = meta.get(symbol);
       if (!m || !(m.quoteVolume >= cfg.minQuoteVolume)) continue;
-      const p15 = priceAt(pts, ts - cfg.windowMin * MIN);
-      if (!p15) continue;
-      const p5 = priceAt(pts, ts - 5 * MIN);
+      const pw = priceAt(pts, ts - cfg.windowMin * MIN);
+      const p15 = priceAt(pts, ts - 15 * MIN);
+      if (!pw || !p15) continue;
       const p60 = priceAt(pts, ts - 60 * MIN);
       items.push({
-        symbol, price: last[1], pct15: pct(last[1], p15),
-        pct5: p5 ? pct(last[1], p5) : null, pct60: p60 ? pct(last[1], p60) : null,
+        symbol, price: last[1], pctWindow: pct(last[1], pw), pct15: pct(last[1], p15),
+        pct60: p60 ? pct(last[1], p60) : null, volRatio: null,
         change24h: m.change24h, quoteVolume: m.quoteVolume,
       });
     }
-    items.sort((a, b) => b.pct15 - a.pct15);
+    items.sort((a, b) => b.pctWindow - a.pctWindow);
     items.forEach((it, i) => { it.rank = i + 1; });
+    return items;
+  }
 
+  // 上位の銘柄と上昇率が通知ラインを超えた銘柄だけ、出来高の倍率を5分足から計算する
+  async function attachVolumes(items, ts) {
+    const step = cfg.stepMin * MIN;
+    const end = Math.floor(ts / step) * step;
+    const limit = Math.ceil((cfg.volRecentMin + cfg.volBaseMin) / cfg.stepMin) + 2;
+    const list = items.filter((it, i) => i < cfg.topN || it.pctWindow >= cfg.thresholdPct);
+    let idx = 0;
+    let blocked = false;
+    const worker = async () => {
+      while (idx < list.length && !blocked) {
+        const it = list[idx++];
+        try {
+          it.volRatio = volumeRatioAt(await bars(it.symbol, limit), end, cfg.volRecentMin, cfg.volBaseMin, cfg.stepMin);
+        } catch (err) {
+          status.volumeErrors += 1;
+          const st = err.response?.status;
+          if (st === 429 || st === 418) {
+            blocked = true;
+            log.warn('⚠️ [急上昇] API制限のため出来高の取得を中断');
+          }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+  }
+
+  const meets = it => it.pctWindow >= cfg.thresholdPct && (!(cfg.volRatio > 0) || (it.volRatio != null && it.volRatio >= cfg.volRatio));
+
+  function decide(items, ts) {
     const fired = [];
     for (const it of items) {
-      if (it.pct15 < cfg.thresholdPct) break;
+      if (it.pctWindow < cfg.thresholdPct) break;
+      if (!meets(it)) continue;
       const lastCond = lastCondTs.get(it.symbol) ?? -Infinity;
       const lastAlert = lastAlertTs.get(it.symbol) ?? -Infinity;
       if (ts - lastCond > cfg.quietMin * MIN && ts - lastAlert > cfg.pauseMin * MIN) {
@@ -240,21 +313,24 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
       }
       lastCondTs.set(it.symbol, ts);
     }
-    return { items, fired };
+    return fired;
   }
 
   function message(a) {
     const base = a.symbol.replace(/USDT$/, '');
+    const w = spanText(a.windowMin);
     const lines = [
       `価格 ${fmtPrice(a.price)} ／ 24h ${signed(a.change24h)} ／ 出来高 ${fmtVol(a.quoteVolume)}`,
-      `15分上昇率 ${a.rank}位` + (a.pct60 != null ? ` ／ 60分 ${signed(a.pct60)}` : ''),
+      (a.volRatio != null ? `1時間の出来高 普段の${fmtRatio(a.volRatio)} ／ ` : '') + `${w}上昇率 ${a.rank}位`,
+      `15分 ${signed(a.pct15)} ／ 60分 ${signed(a.pct60)}`,
     ];
-    return { title: `🚀 ${base} 15分で${signed(a.pct15)}`, body: lines.join('\n'), url: `https://www.binance.com/ja/futures/${a.symbol}` };
+    return { title: `🚀 ${base} ${w}で${signed(a.pctWindow)}`, body: lines.join('\n'), url: `https://www.binance.com/ja/futures/${a.symbol}` };
   }
 
   async function handleAlert(it, ts) {
     const a = {
-      id: null, ts, symbol: it.symbol, pct15: it.pct15, pct60: it.pct60, price: it.price, change24h: it.change24h,
+      id: null, ts, symbol: it.symbol, windowMin: cfg.windowMin, pctWindow: it.pctWindow, volRatio: it.volRatio,
+      pct15: it.pct15, pct60: it.pct60, price: it.price, change24h: it.change24h,
       quoteVolume: it.quoteVolume, rank: it.rank, thresholdPct: cfg.thresholdPct, maxPrice: it.price, notified: '',
     };
     alerts.push(a);
@@ -262,7 +338,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     a.id = (await persist?.saveMomentumAlert?.(a)) ?? null;
     if (!a.notified && notify.configured) pending.push(a);
     status.alertsSent += 1;
-    log.log(`🚀 [急上昇] ${a.symbol} 15分 ${signed(a.pct15)} 価格 ${fmtPrice(a.price)} 通知先: ${a.notified || 'なし(再送待ち)'}`);
+    log.log(`🚀 [急上昇] ${a.symbol} ${span} ${signed(a.pctWindow)} 出来高 ${fmtRatio(a.volRatio)} 価格 ${fmtPrice(a.price)} 通知先: ${a.notified || 'なし(再送待ち)'}`);
   }
 
   // 届かなかった通知は検知から30分間、5分ごとに送り直す(遅れても届いた方が役に立つ)
@@ -310,7 +386,9 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
   }
 
   async function processRound(ts) {
-    const { items, fired } = evaluate(ts);
+    const items = rank(ts);
+    await attachVolumes(items, ts);
+    const fired = decide(items, ts);
     view = { ts, items: items.slice(0, cfg.topN), eligible: items.length };
     trackFollowUp(ts);
     if (pending.length) await resendPending(ts);
@@ -321,18 +399,20 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     return { items, fired };
   }
 
-  // 起動時に直近80分の1分足を取り込む。再起動直後から15分前と比べられ、重複通知も防げる
+  // 起動時に直近(4時間+α)の5分足を取り込む。再起動直後から4時間前と比べられ、重複通知も防げる
   async function backfill() {
     const symbols = [...universe];
     const end = Date.now();
+    const step = cfg.stepMin * MIN;
+    const limit = Math.ceil(cfg.keepMin / cfg.stepMin) + 1;
     let idx = 0;
     const worker = async () => {
       while (idx < symbols.length) {
         const s = symbols[idx++];
         try {
-          const { data } = await api.get('/fapi/v1/klines', { params: { symbol: s, interval: '1m', limit: cfg.keepMin } });
+          const { data } = await api.get('/fapi/v1/klines', { params: { symbol: s, interval: `${cfg.stepMin}m`, limit } });
           for (const k of data) {
-            const closeTs = Number(k[0]) + MIN;
+            const closeTs = Number(k[0]) + step;
             if (closeTs <= end) push(s, closeTs, parseFloat(k[4]));
           }
           status.backfilledSymbols += 1;
@@ -349,20 +429,34 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     await Promise.all(Array.from({ length: 6 }, worker));
   }
 
-  // 取り込んだ1分足から「直前60分に条件を満たした時刻」を復元する(起動直後の重複通知を防ぐ)
-  function prime() {
+  // 取り込んだ足から「直前60分に条件を満たした時刻」を復元する(起動直後の重複通知を防ぐ)
+  async function prime() {
     const step = cfg.stepMin * MIN;
+    const limit = Math.ceil((cfg.volRecentMin + cfg.volBaseMin + cfg.quietMin) / cfg.stepMin) + 2;
     for (const [s, pts] of prices) {
       if (pts.length < 2) continue;
       const last = pts[pts.length - 1][0];
+      const times = []; // 価格の条件を満たした時刻(新しい順)
       for (let t = Math.floor(last / step) * step; t > last - cfg.quietMin * MIN; t -= step) {
         const p = priceAt(pts, t, 90000);
         const b = priceAt(pts, t - cfg.windowMin * MIN, 90000);
-        if (p && b && pct(p, b) >= cfg.thresholdPct) {
-          lastCondTs.set(s, t);
-          break;
+        if (p && b && pct(p, b) >= cfg.thresholdPct) times.push(t);
+      }
+      if (!times.length) continue;
+      let vb = null;
+      if (cfg.volRatio > 0) {
+        try {
+          vb = await bars(s, limit);
+        } catch {
+          vb = null; // 取れなければ満たしていたとみなす(鳴らし過ぎない側に倒す)
         }
       }
+      const t = times.find(x => {
+        if (!(cfg.volRatio > 0) || !vb) return true;
+        const r = volumeRatioAt(vb, x, cfg.volRecentMin, cfg.volBaseMin, cfg.stepMin);
+        return r != null && r >= cfg.volRatio;
+      });
+      if (t != null) lastCondTs.set(s, t);
     }
   }
 
@@ -398,8 +492,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
       return;
     }
     const n = notify.status();
-    const pauseText = cfg.pauseMin % 60 === 0 ? `${cfg.pauseMin / 60}時間` : `${cfg.pauseMin}分`;
-    log.log(`🚀 [急上昇] 開始: 15分で+${cfg.thresholdPct}%以上・同じ銘柄は${pauseText}停止・通知先 Bark=${n.bark ? '有' : '無'} ntfy=${n.ntfy ? '有' : '無'}`);
+    log.log(`🚀 [急上昇] 開始: ${ruleText}・同じ銘柄は${pauseText}停止・通知先 Bark=${n.bark ? '有' : '無'} ntfy=${n.ntfy ? '有' : '無'}`);
     try {
       await refreshUniverse();
     } catch (err) {
@@ -408,7 +501,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     }
     await backfill();
     await restoreAlerts();
-    prime();
+    await prime();
     log.log(`🚀 [急上昇] 起動時の取り込み: ${status.backfilledSymbols}/${universe.size}銘柄`);
     try {
       await runRound();
@@ -418,7 +511,7 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
     }
     schedule();
     if (cfg.notifyOnStart && notify.configured) {
-      await notify.send({ title: '🚀 急上昇通知を開始しました', body: `15分で+${cfg.thresholdPct}%以上で通知 ／ 同じ銘柄は${pauseText}止めます`, group: 'system' });
+      await notify.send({ title: '🚀 急上昇通知を開始しました', body: `${ruleText}で通知 ／ 同じ銘柄は${pauseText}止めます`, group: 'system' });
     }
   }
 
@@ -437,7 +530,10 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
       enabled: !cfg.disabled,
       ready: status.ready,
       updatedAt: view.ts,
-      config: { thresholdPct: cfg.thresholdPct, pauseMin: cfg.pauseMin, windowMin: cfg.windowMin, stepMin: cfg.stepMin, minQuoteVolume: cfg.minQuoteVolume },
+      config: {
+        windowMin: cfg.windowMin, thresholdPct: cfg.thresholdPct, volRatio: cfg.volRatio, volRecentMin: cfg.volRecentMin,
+        pauseMin: cfg.pauseMin, stepMin: cfg.stepMin, minQuoteVolume: cfg.minQuoteVolume,
+      },
       notify: { bark: n.bark, ntfy: n.ntfy },
       eligible: view.eligible,
       items: view.items,
@@ -464,4 +560,4 @@ function createMomentum({ api, persist, notifier, config, log = console } = {}) 
   };
 }
 
-module.exports = { createMomentum, createNotifier, priceAt };
+module.exports = { createMomentum, createNotifier, priceAt, volumeRatioAt };

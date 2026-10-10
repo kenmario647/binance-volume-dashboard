@@ -107,8 +107,8 @@ export const TABS = [
         view: 'momentum',
         icon: '🚀',
         color: '#ef4444',
-        description: '15分の上昇率',
-        badgeText: '15分',
+        description: '4時間の上昇率',
+        badgeText: '4時間',
     },
 ];
 

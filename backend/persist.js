@@ -94,6 +94,7 @@ async function init() {
     }
     client = createClient({ url, authToken });
     for (const sql of SCHEMA) await client.execute(sql);
+    await migrateMomentumAlerts();
     status.ready = true;
     status.lastError = null;
     console.log(`💾 永続化: 準備完了 (${status.mode}: ${status.target})`);
@@ -210,14 +211,35 @@ async function getStats() {
 
 // ── 急上昇通知の記録 ──
 
+// 4時間の上昇率・出来高の倍率の列(2026-10 追加)。古い表には列を足す。足せなければ従来の列だけ記録する
+let alertExtraCols = false;
+async function migrateMomentumAlerts() {
+  try {
+    const info = await client.execute(`PRAGMA table_info(momentum_alerts)`);
+    const have = new Set(info.rows.map(r => r.name));
+    for (const [col, type] of [['window_min', 'INTEGER'], ['pct_window', 'REAL'], ['vol_ratio', 'REAL']]) {
+      if (!have.has(col)) await client.execute(`ALTER TABLE momentum_alerts ADD COLUMN ${col} ${type}`);
+    }
+    alertExtraCols = true;
+  } catch (err) {
+    alertExtraCols = false;
+    console.error('❌ 急上昇通知の表に列を追加できませんでした(上昇率の期間と出来高の倍率は記録しません):', redact(err.message));
+  }
+}
+
 async function saveMomentumAlert(a) {
   if (!status.ready) return null;
   try {
+    const cols = ['ts', 'symbol', 'pct15', 'pct60', 'price', 'change24h', 'quote_volume', 'rank', 'threshold_pct', 'max_price', 'notified'];
+    const args = [a.ts, a.symbol, a.pct15, numOrNull(a.pct60), a.price, numOrNull(a.change24h), numOrNull(a.quoteVolume),
+      a.rank ?? null, numOrNull(a.thresholdPct), numOrNull(a.maxPrice), a.notified || null];
+    if (alertExtraCols) {
+      cols.push('window_min', 'pct_window', 'vol_ratio');
+      args.push(a.windowMin ?? null, numOrNull(a.pctWindow), numOrNull(a.volRatio));
+    }
     const res = await client.execute({
-      sql: `INSERT INTO momentum_alerts (ts, symbol, pct15, pct60, price, change24h, quote_volume, rank, threshold_pct, max_price, notified)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [a.ts, a.symbol, a.pct15, numOrNull(a.pct60), a.price, numOrNull(a.change24h), numOrNull(a.quoteVolume),
-        a.rank ?? null, numOrNull(a.thresholdPct), numOrNull(a.maxPrice), a.notified || null],
+      sql: `INSERT INTO momentum_alerts (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      args,
     });
     return Number(res.lastInsertRowid);
   } catch (err) {
@@ -247,8 +269,9 @@ async function updateMomentumAlertNotified(id, notified) {
 
 async function listMomentumAlerts({ fromTs = 0, limit = 500 } = {}) {
   if (!status.ready) return [];
+  const extra = alertExtraCols ? ', window_min, pct_window, vol_ratio' : '';
   const res = await client.execute({
-    sql: `SELECT id, ts, symbol, pct15, pct60, price, change24h, quote_volume, rank, threshold_pct, max_price, notified
+    sql: `SELECT id, ts, symbol, pct15, pct60, price, change24h, quote_volume, rank, threshold_pct, max_price, notified${extra}
             FROM momentum_alerts WHERE ts >= ? ORDER BY ts DESC LIMIT ?`,
     args: [fromTs, limit],
   });
@@ -257,6 +280,7 @@ async function listMomentumAlerts({ fromTs = 0, limit = 500 } = {}) {
     id: Number(r.id), ts: Number(r.ts), symbol: r.symbol, pct15: Number(r.pct15), pct60: n(r.pct60),
     price: Number(r.price), change24h: n(r.change24h), quoteVolume: n(r.quote_volume), rank: n(r.rank),
     thresholdPct: n(r.threshold_pct), maxPrice: n(r.max_price), notified: r.notified,
+    windowMin: n(r.window_min), pctWindow: n(r.pct_window), volRatio: n(r.vol_ratio),
   }));
 }
 
